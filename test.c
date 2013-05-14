@@ -1,8 +1,34 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 #include <pthread.h>
+#include <string.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "plate_bw_list.h"
+#include "common.h"
+
+static pthread_t tid;
+
+void *thread(void *pArg)
+{
+    pArg = NULL;
+
+    if (-1 == bl_delete_records_by_plate_type(WHITE))
+    {
+        LOG("delete record by type failed!");
+    }
+    else
+    {
+        LOG("delete record by type success!");
+    }
+    sleep (8);
+    bl_export("./export.txt", ";");
+
+    return NULL;
+}
+
 
 
 int main(void)
@@ -10,20 +36,29 @@ int main(void)
 
     if (-1 == bwl_init_database("./test.db"))
     {
-        printf("Init error!\n");
+        LOG("Init error!");
         return 0;
+    }
+
+    if (pthread_create(&tid, NULL, thread, NULL) != 0)
+    {
+        LOG("Create Thread Error:%s",strerror(errno));
+        exit(-1);
     }
 
     if (-1 == bl_import("black_list.txt", ";"))
     {
-        printf("import blacklist error!\n");
-        return 0;
+        LOG("import blacklist error!");
+    }
+    else 
+    {
+        LOG("Import blackList success!");
     }
 
     char *szPlateNumber = "皖A-11111";
 
     PLATE_RECORD_T PlateRecord = {
-        .PlateType_t = BLUE,
+        .PlateType = BLUE,
         .szPlateNumber = szPlateNumber,
         .szCommentStr = "hello insert",
     };
@@ -31,62 +66,55 @@ int main(void)
     
     if (-1 == bl_insert_record(pPlateRecord))
     {
-        printf("Insert record error!\n");
+        LOG("Insert record error!");
     }
     else 
     {
-        printf("Insert record success!\n");
+        LOG("Insert record success!");
     }
 
     int ret = bl_query(szPlateNumber, pPlateRecord);
 
     if (ret == 0)
     {
-        printf("Plate:%s not found!\n", szPlateNumber);
+        LOG("Plate:%s not found!", szPlateNumber);
     }
     else if (ret == 1)
     {
-        printf("Plate:%s is in blacklist!\n", szPlateNumber);
-        printf("PlateNumber:%s<***>PlateType:%d<***>Comment:%s\n",
+        LOG("Plate:%s is in blacklist!", szPlateNumber);
+        LOG("PlateNumber:%s<***>PlateType:%d<***>Comment:%s",
                 pPlateRecord->szPlateNumber,
-                pPlateRecord->PlateType_t,
+                pPlateRecord->PlateType,
                 pPlateRecord->szCommentStr);
     }
     else 
     {
-        printf("Query error!\n");
+        LOG("Query error!");
         return -1;
     }
 
     char *szPlateNumber_1 = "皖A-53333";
     if (-1 == bl_delete_record_by_plate_number(szPlateNumber_1))
     {
-        printf("delete record error!\n");
+        LOG("delete record error!");
     }
     else 
     {
-        printf("delete record success!\n");
-    }
-
-    if (-1 == bl_delete_records_by_plate_type(WHITE))
-    {
-        printf("delete record by type failed!\n");
-    }
-    else
-    {
-        printf("delete record by type success!\n");
+        LOG("delete record success!");
     }
 
     char *szPlateNumber_2 = "皖A-43333";
     char *szComment = "Modify comment str";
     if (-1 == bl_modify_record_comment(szPlateNumber_2, szComment))
     {
-        printf("modify comment failed!\n");
+        LOG("modify comment failed!");
     }
     else
     {
-        printf("modify comment success!\n");
+        LOG("modify comment success!");
     }
+
+    pthread_join(tid, NULL);
 
     return 0;
 }

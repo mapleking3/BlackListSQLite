@@ -309,7 +309,9 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         sqlite3_finalize(pStmt);
         return FAILED;
     }
-    sqlite3_exec(db, "BEGIN", 0, 0, 0);
+
+    //BEGIN IMMEDIATE avoid deadlock
+    sqlite3_exec(db, "BEGIN IMMEDIATE", 0, 0, 0);
     zCommit = "COMMIT";
 
     while( (zLine = local_getline(0, in, 1))!=0 )

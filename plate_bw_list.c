@@ -2,14 +2,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <pthread.h>
 #include "plate_bw_list.h"
+#include "common.h"
 
 #define FAILED  -1
 #define SUCCESS 0
 
-#define LOG_ERR(format,...) \
-    printf("%s in %s Line[%d]:"format"\n",\
-            __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);
 
 /*local static variables */
 static sqlite3 *db;
@@ -26,25 +25,25 @@ static int modify_record_comment(const char *szTableName, char *szPlateNumber, c
 static int delete_record_by_plate_number(const char *szTableName, char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
 
-/*extern api */
-
 int bwl_init_database(const char *szDatabaseFilePath)
 {
+    sqlite3_config(SQLITE_CONFIG_SERIALIZED);
+
     if (sqlite3_open(szDatabaseFilePath, &db) != SQLITE_OK)
     {
-        LOG_ERR("Can't open database:%s.", sqlite3_errmsg(db));
+        LOG("Can't open database:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 
     if (sqlite3_exec(db, "PRAGMA page_size=4096;", 0, 0, NULL) != SQLITE_OK)
     {
-        LOG_ERR("Can't set page_size:%s.", sqlite3_errmsg(db));
+        LOG("Can't set page_size:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 
     if (sqlite3_exec(db, "PRAGMA cache_size=25000;", 0, 0, NULL) != SQLITE_OK)
     {
-        LOG_ERR("Can't set cache_size:%s.", sqlite3_errmsg(db));
+        LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 
@@ -60,7 +59,7 @@ int bwl_init_database(const char *szDatabaseFilePath)
 
     if (rc_bl != SQLITE_OK || rc_wl != SQLITE_OK)
     {
-        LOG_ERR("Create BlackList error:%s.", sqlite3_errmsg(db));
+        LOG("Create BlackList error:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 
@@ -156,9 +155,10 @@ int wl_clear_records(void)
 /* local function */
 static int exec_sql_not_select(char *sql)
 {
-    if (sqlite3_exec(db, sql, 0, 0, NULL) != SQLITE_OK)
+    int ret = sqlite3_exec(db, sql, 0, 0, NULL);
+    if (ret != SQLITE_OK)
     {
-        LOG_ERR("exec sql error:%s", sqlite3_errmsg(db));
+        LOG("exec sql error:%s", sqlite3_errmsg(db));
         return FAILED;
     }
     return SUCCESS;
@@ -238,14 +238,14 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     nSep = strlen30(separator);
     if( nSep==0 )
     {
-        LOG_ERR("Error: non-null separator required for import.");
+        LOG("Error: non-null separator required for import.");
         return FAILED;
     }
 
     zSql = sqlite3_mprintf("SELECT * FROM %s", zTable);
     if( zSql==0 )
     {
-        LOG_ERR("Error: out of memory.");
+        LOG("Error: out of memory.");
         return FAILED;
     }
     nByte = strlen30(zSql);
@@ -257,7 +257,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         {
             sqlite3_finalize(pStmt);
         }
-        LOG_ERR("Error: %s.", sqlite3_errmsg(db));
+        LOG("Error: %s.", sqlite3_errmsg(db));
         return FAILED;
     }
 
@@ -271,7 +271,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     zSql = malloc( nByte + 20 + nCol*2 );
     if( zSql==0 )
     {
-        LOG_ERR("Error: out of memory!.");
+        LOG("Error: out of memory!.");
         return FAILED;
     }
     sqlite3_snprintf(nByte+20, zSql, "INSERT INTO %s VALUES(?", zTable);
@@ -287,7 +287,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     free(zSql);
     if(rc)
     {
-        LOG_ERR("Error: %s.", sqlite3_errmsg(db));
+        LOG("Error: %s.", sqlite3_errmsg(db));
         if (pStmt)
         {
             sqlite3_finalize(pStmt);
@@ -297,14 +297,14 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     in = fopen(zFile, "rb");
     if( in==0 )
     {
-        LOG_ERR("Error: cannot open \"%s\".", zFile);
+        LOG("Error: cannot open \"%s\".", zFile);
         sqlite3_finalize(pStmt);
         return FAILED;
     }
     azCol = malloc(sizeof(azCol[0])*(nCol+1) );
     if( azCol==0 )
     {
-        LOG_ERR("Error: out of memory.");
+        LOG("Error: out of memory.");
         fclose(in);
         sqlite3_finalize(pStmt);
         return FAILED;
@@ -344,7 +344,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         *z = 0;
         if( i+1!=nCol )
         {
-            LOG_ERR("Error: %s line %d: expected %d columns of data bud found %d.",
+            LOG("Error: %s line %d: expected %d columns of data bud found %d.",
                     zFile, lineno, nCol, i+1);
             zCommit = "ROLLBACK";
             free(zLine);
@@ -379,7 +379,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         free(zLine);
         if(rc!=SQLITE_OK)
         {
-            LOG_ERR("Error:%s.", sqlite3_errmsg(db));
+            LOG("Error:%s.", sqlite3_errmsg(db));
             zCommit = "ROLLBACK";
             rc = 1;
             break; /* from while */
@@ -393,11 +393,54 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     {
         return FAILED;
     }
-    return SUCCESS;
+    if (strcmp(zCommit, "COMMIT") == 0)
+    {
+        return SUCCESS;
+    }
+    else
+    {
+        return FAILED;
+    }
 }
 
 static int export(const char *szTableName, const char *szExportFileName, const char *szRecordSeparator)
 {
+    int nrow = 0;
+    int ncolumn = 0;
+    char **Result = 0;
+    char *sql_select = sqlite3_mprintf("SELECT * FROM %q;", szTableName);
+    sqlite3_get_table(db, sql_select, &Result, &nrow, &ncolumn, NULL);
+    sqlite3_free(sql_select);
+
+    FILE *fp = fopen(szExportFileName, "a");
+
+    int i, j;
+    for (i = 1; i < nrow+1; ++i)
+    {
+        for (j = 0; j < ncolumn; ++j)
+        {
+            fwrite(Result[i*ncolumn+j], strlen(Result[i*ncolumn+j]), 1, fp);
+            if (ncolumn > 1 && j < ncolumn-1) 
+            {
+                fwrite(szRecordSeparator, strlen(szRecordSeparator), 1, fp);
+            }
+        }
+        fwrite("\n", 1, 1, fp);
+    }
+    //int i, j;
+    //for (i = 1; i < nrow+1; ++i)
+    //{
+    //    char buf[50] = {0};
+    //    for (j = 0; j < ncolumn; ++j)
+    //    {
+    //        strcat(buf, szRecordSeparator);
+    //        strcat(buf, Result[ncolumn*i+j]);
+    //    }
+    //    strcat(buf, "\n");
+    //    fwrite(buf, sizeof(buf), 1, fp);
+    //}
+    sqlite3_free_table(Result);
+
     return SUCCESS;
 }
 
@@ -413,7 +456,7 @@ static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *p
         {
             sqlite3_finalize(stmt_select);
         }
-        LOG_ERR("Sqlite3 prepare v2 error:%s", sqlite3_errmsg(db));
+        LOG("Sqlite3 prepare v2 error:%s", sqlite3_errmsg(db));
         return FAILED;
     }
 
@@ -447,7 +490,7 @@ static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *p
         }
 
         pPlateRecord->szPlateNumber = szPlateNumber;
-        pPlateRecord->PlateType_t = iTempPlateType;
+        pPlateRecord->PlateType = iTempPlateType;
         pPlateRecord->szCommentStr = (char *)sTempCommentStr;
 
         return 1;
@@ -461,7 +504,7 @@ static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *p
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord)
 {
     char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES('%q','%d','%q');", szTableName, pPlateRecord->szPlateNumber,
-                                        pPlateRecord->PlateType_t, pPlateRecord->szCommentStr);
+                                        pPlateRecord->PlateType, pPlateRecord->szCommentStr);
     int rc = exec_sql_not_select(sql_insert);
 
     sqlite3_free(sql_insert);

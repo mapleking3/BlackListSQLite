@@ -2,12 +2,20 @@
 #define _COMMON_H_
 #include <sys/time.h>
 
+/**@macro   LOG(format, ...)
+ *@brief    printf message
+ *@brief    Author/Data Retton/20130513
+ */
 #define LOG(format, ...)                                            \
         do{printf("%s in %s Line[%d]:"format"\n",                   \
                 __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);   \
         } while(0)
 
 
+/**@macro   
+ *@brief    caculate time spend
+ *@brief    Author/Data Retton/20130513
+ */
 #define STATICS_START(name)                             \
         {                                               \
         struct timeval start;                           \
@@ -22,10 +30,5 @@
                (end.tv_sec  - start.tv_sec)  * 1000 +   \
                (end.tv_usec - start.tv_usec) / 1000);   \
         }
-
-
-
-
-
 
 #endif //_COMMON_H_

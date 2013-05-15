@@ -9,27 +9,6 @@
 #include "plate_bw_list.h"
 #include "common.h"
 
-static pthread_t tid;
-
-void *thread(void *pArg)
-{
-    pArg = NULL;
-
-    if (-1 == bl_delete_records_by_plate_type(WHITE))
-    {
-        LOG("delete record by type failed!");
-    }
-    else
-    {
-        LOG("delete record by type success!");
-    }
-    sleep (8);
-    bl_export("./export.txt", ";");
-
-    return NULL;
-}
-
-
 
 int main(void)
 {
@@ -40,12 +19,7 @@ int main(void)
         return 0;
     }
 
-    if (pthread_create(&tid, NULL, thread, NULL) != 0)
-    {
-        LOG("Create Thread Error:%s",strerror(errno));
-        exit(-1);
-    }
-
+    STATICS_START("Import");
     if (-1 == bl_import("black_list.txt", ";"))
     {
         LOG("import blacklist error!");
@@ -54,6 +28,7 @@ int main(void)
     {
         LOG("Import blackList success!");
     }
+    STATICS_STOP();
 
     char *szPlateNumber = "皖A-11111";
 
@@ -73,6 +48,7 @@ int main(void)
         LOG("Insert record success!");
     }
 
+    STATICS_START("Query");
     int ret = bl_query(szPlateNumber, pPlateRecord);
 
     if (ret == 0)
@@ -92,6 +68,7 @@ int main(void)
         LOG("Query error!");
         return -1;
     }
+    STATICS_STOP();
 
     char *szPlateNumber_1 = "皖A-53333";
     if (-1 == bl_delete_record_by_plate_number(szPlateNumber_1))
@@ -114,7 +91,7 @@ int main(void)
         LOG("modify comment success!");
     }
 
-    pthread_join(tid, NULL);
+    pause();
 
     return 0;
 }

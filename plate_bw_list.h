@@ -80,7 +80,7 @@ extern int bl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
  *@brief    Author/Data Retton/20130513
  *@param    [in]szPlateNumber: Plate Number
  *@param    [in]pPlateRecord: pointer to plate record
- *@return   1:in whitelist 0: not in blacklist -1: error 
+ *@return   1:in whitelist 0: not in whitelist -1: error 
  */
 extern int wl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
 

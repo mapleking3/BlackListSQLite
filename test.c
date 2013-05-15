@@ -23,7 +23,7 @@ void *thread(void *pArg)
     {
         LOG("delete record by type success!");
     }
-    sleep (8);
+    usleep(1000);
     bl_export("./export.txt", ";");
 
     return NULL;

@@ -3,45 +3,53 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include <errno.h>
+#include <string.h>
 #include "plate_bw_list.h"
-#include "common.h"
 
 #define FAILED  -1
 #define SUCCESS 0
 
+#define LOG(format, ...)                                            \
+        do {printf("%s in %s Line[%d]:"format"\n",                   \
+                __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);   \
+        } while(0)
 
 /*local static variables */
 static sqlite3 *db;
 static const char *szBlackListTable = "BlackList";
 static const char *szWhiteListTable = "WhiteList";
 
-
 static int import(const char *szTableName, const char *szImportFileName, const char *szRecordSeparator);
 static int export(const char *szTableName, const char *szExportFileName, const char *szRecordSeparator);
-static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
+static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord);
 static int clear_record(const char *szTableName);
-static int modify_record_comment(const char *szTableName, char *szPlateNumber, char *szCommentStr);
-static int delete_record_by_plate_number(const char *szTableName, char *szPlateNumber);
+static int modify_record_comment(const char *szTableName, const char *szPlateNumber, const char *szCommentStr);
+static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
 
 int bwl_init_database(const char *szDatabaseFilePath)
 {
-    sqlite3_config(SQLITE_CONFIG_SERIALIZED);
+    if (SQLITE_OK != sqlite3_config(SQLITE_CONFIG_SERIALIZED))
+    {
+        LOG("Configure Sqlite3 error:%s.", sqlite3_errmsg(db));
+        goto ErrReturn;
+    }
 
-    if (sqlite3_open(szDatabaseFilePath, &db) != SQLITE_OK)
+    if (SQLITE_OK != sqlite3_open(szDatabaseFilePath, &db))
     {
         LOG("Can't open database:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 
-    if (sqlite3_exec(db, "PRAGMA page_size=4096;", 0, 0, NULL) != SQLITE_OK)
+    if (SQLITE_OK != sqlite3_exec(db, "PRAGMA page_size=4096;", 0, 0, NULL))
     {
         LOG("Can't set page_size:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 
-    if (sqlite3_exec(db, "PRAGMA cache_size=25000;", 0, 0, NULL) != SQLITE_OK)
+    if (SQLITE_OK != sqlite3_exec(db, "PRAGMA cache_size=8000;", 0, 0, NULL))
     {
         LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
@@ -407,58 +415,142 @@ static int import(const char *szTableName, const char *szImportFileName, const c
 
 static int export(const char *szTableName, const char *szExportFileName, const char *szRecordSeparator)
 {
-    int nrow = 0;
-    int ncolumn = 0;
-    char **Result = 0;
-    char *sql_select = sqlite3_mprintf("SELECT * FROM %q;", szTableName);
-    sqlite3_get_table(db, sql_select, &Result, &nrow, &ncolumn, NULL);
-    sqlite3_free(sql_select);
-
     FILE *fp = fopen(szExportFileName, "a");
 
-    int i, j;
-    for (i = 1; i < nrow+1; ++i)
+    if (NULL == fp)
     {
-        for (j = 0; j < ncolumn; ++j)
-        {
-            fwrite(Result[i*ncolumn+j], strlen(Result[i*ncolumn+j]), 1, fp);
-            if (ncolumn > 1 && j < ncolumn-1) 
-            {
-                fwrite(szRecordSeparator, strlen(szRecordSeparator), 1, fp);
-            }
-        }
-        fwrite("\n", 1, 1, fp);
+        LOG("Open export file error:%s", strerror(errno));
+        return FAILED;
     }
-    //int i, j;
-    //for (i = 1; i < nrow+1; ++i)
-    //{
-    //    char buf[50] = {0};
-    //    for (j = 0; j < ncolumn; ++j)
-    //    {
-    //        strcat(buf, szRecordSeparator);
-    //        strcat(buf, Result[ncolumn*i+j]);
-    //    }
-    //    strcat(buf, "\n");
-    //    fwrite(buf, sizeof(buf), 1, fp);
-    //}
-    sqlite3_free_table(Result);
 
+    char *sql_select = sqlite3_mprintf("SELECT * FROM %q;", szTableName);
+
+    sqlite3_stmt *stmt = NULL;
+
+    if (SQLITE_OK != sqlite3_prepare_v2(db, sql_select, -1, &stmt, NULL))
+    {
+        if (NULL != stmt)
+        {
+            sqlite3_finalize(stmt);
+        }
+        return FAILED;
+    }
+
+    int fieldCount = sqlite3_column_count(stmt);
+
+    for (;;)
+    {
+        int ret = sqlite3_step(stmt);
+        if (SQLITE_ROW == ret)
+        {
+            int currField;
+            char *str;
+            char *szTemp = NULL;
+
+            for (currField = 0; currField < fieldCount; ++currField)
+            {
+                int type = sqlite3_column_type(stmt, currField);
+                int len;
+                switch(type)
+                {
+                    case SQLITE_INTEGER:
+                        szTemp = sqlite3_mprintf("%d", sqlite3_column_int(stmt, currField));
+                        len = strlen(szTemp);
+                        if (fieldCount - 1 > currField)
+                        {
+                            szTemp[strlen(szTemp)] = ';';
+                            szTemp[strlen(szTemp)+1] = 0;
+                        }
+                        if (0 == currField)
+                        {
+                            str = szTemp;
+                        }
+                        else
+                        {
+                            str = strcat(str, szTemp);
+                        }
+                        sqlite3_free(szTemp);
+                        break;
+                    case SQLITE_TEXT:
+                        szTemp = (char *)sqlite3_column_text(stmt, currField);
+                        len = strlen(szTemp);
+                        szTemp[-1] = '"';
+                        szTemp[len] = '"';
+                        if (fieldCount - 1 == currField)
+                        {
+                            szTemp[len+1] = 0;
+                        }
+                        else
+                        {
+                            szTemp[len+1] = ';';
+                            szTemp[len+2] = 0;
+                        }
+
+                        if (0 == currField)
+                        {
+                            str = szTemp-1;
+                        }
+                        else
+                        {
+                            strcat(str, szTemp-1);
+                        }
+                        break;
+                    case SQLITE_FLOAT:
+                        szTemp = sqlite3_mprintf("%lf", sqlite3_column_double(stmt, currField));
+                        len = strlen(szTemp);
+                        if (fieldCount -1 > currField)
+                        {
+                            szTemp[len] = ';';
+                            szTemp[len+1] = 0;
+                        }
+
+                        if (0 == currField)
+                        {
+                            str = szTemp;
+                        }
+                        else 
+                        {
+                            str = strcat(str, szTemp);
+                        }
+                        sqlite3_free(szTemp);
+                        break;
+                    default:
+                        break;
+                }
+            }
+            int len = strlen(str);
+            str[len] = '\n';
+            str[len+1] = 0;
+            fwrite(str, strlen(str), 1, fp);
+            //fwrite("\n", 1, 1, fp);
+
+        }
+        else if (SQLITE_DONE == ret)
+        {
+            break;
+        }
+        else
+        {
+            return FAILED;
+        }
+    }
     return SUCCESS;
 }
 
-static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
     sqlite3_stmt *stmt_select = NULL;
     
-    char *sql_select = sqlite3_mprintf("SELECT * FROM %Q where PlateNumber=%Q", szTableName, szPlateNumber);
+    char *sql_select = sqlite3_mprintf("SELECT * FROM %q where PlateNumber=%Q;", szTableName, szPlateNumber);
 
-    if (sqlite3_prepare_v2(db, sql_select, -1, &stmt_select, 0) != SQLITE_OK)
+    if (SQLITE_OK != sqlite3_prepare_v2(db, sql_select, -1, &stmt_select, 0))
     {
-        if (stmt_select)
+        if (NULL != stmt_select)
         {
             sqlite3_finalize(stmt_select);
         }
         LOG("Sqlite3 prepare v2 error:%s", sqlite3_errmsg(db));
+        sqlite3_free(sql_select);
         return FAILED;
     }
 
@@ -468,33 +560,37 @@ static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *p
 
     int ret = sqlite3_step(stmt_select);
 
-    if (ret == SQLITE_DONE)
+    if (SQLITE_DONE == ret)
     {
         printf("%s is not in BlackList.\n", szPlateNumber);
         return 0;
     }
-    else if (ret == SQLITE_ROW)
+    else if (SQLITE_ROW == ret)
     {
-        int iTempPlateType = 0;
-        char *sTempCommentStr = 0;
-        int currField;
-        for (currField = 0; currField < fieldCount; ++currField)
+        if (NULL != pPlateRecord)
         {
-            const char *szTemp = sqlite3_column_name(stmt_select, currField);
-            if (strcmp(szTemp, "PlateType") == 0)
+            int iTempPlateType = 0;
+            char *sTempCommentStr = 0;
+            int currField;
+
+            for (currField = 0; currField < fieldCount; ++currField)
             {
-                iTempPlateType = sqlite3_column_int(stmt_select, currField);
+                const char *szTemp = sqlite3_column_name(stmt_select, currField);
+
+                if (strcmp(szTemp, "PlateType") == 0)
+                {
+                    iTempPlateType = sqlite3_column_int(stmt_select, currField);
+                }
+                else if (strcmp(szTemp, "Comment") == 0)
+                {
+                    sTempCommentStr = (char *)sqlite3_column_text(stmt_select, currField);
+                }
             }
-            else if (strcmp(szTemp, "Comment") == 0)
-            {
-                sTempCommentStr = (char *)sqlite3_column_text(stmt_select, currField);
-            }
+
+            pPlateRecord->szPlateNumber = (char *)szPlateNumber;
+            pPlateRecord->PlateType = iTempPlateType;
+            pPlateRecord->szCommentStr = (char *)sTempCommentStr;
         }
-
-        pPlateRecord->szPlateNumber = szPlateNumber;
-        pPlateRecord->PlateType = iTempPlateType;
-        pPlateRecord->szCommentStr = (char *)sTempCommentStr;
-
         return 1;
     }
     else 
@@ -505,40 +601,32 @@ static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *p
 
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord)
 {
-    char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES('%q','%d','%q');", szTableName, pPlateRecord->szPlateNumber,
+    char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES(%Q,%d,%Q);", 
+                                        szTableName, pPlateRecord->szPlateNumber, 
                                         pPlateRecord->PlateType, pPlateRecord->szCommentStr);
-    int rc = exec_sql_not_select(sql_insert);
+
+    int ret = exec_sql_not_select(sql_insert);
 
     sqlite3_free(sql_insert);
 
-    return rc;
+    return ret;
 }
 
 static int clear_record(const char *szTableName)
 {
+    char *sql_clear = sqlite3_mprintf("DELETE FROM %q;", szTableName);
 
-    char *sql_drop = sqlite3_mprintf("DROP TABLE %q;", szTableName);
-    int rc = exec_sql_not_select(sql_drop);
+    int ret = exec_sql_not_select(sql_clear);
 
-    sqlite3_free(sql_drop);
+    sqlite3_free(sql_clear);
 
-    if (rc == FAILED)
-    {
-        return FAILED;
-    }
-
-    char *sql_create = sqlite3_mprintf("CREATE TABLE %q(PlateNumber TEXT PRIMARY KEY, PlateType INTEGER,\
-                                            Comment TEXT);", szTableName);
-    rc = exec_sql_not_select(sql_create);
-
-    sqlite3_free(sql_create);
-
-    return rc;
+    return ret;
 }
 
-static int modify_record_comment(const char *szTableName, char *szPlateNumber, char *szCommentStr)
+static int modify_record_comment(const char *szTableName, const char *szPlateNumber, const char *szCommentStr)
 {
-    char *sql_modify = sqlite3_mprintf("UPDATE %s set Comment='%q' where PlateNumber='%q';", szTableName, szCommentStr, szPlateNumber);
+    char *sql_modify = sqlite3_mprintf("UPDATE %q set Comment=%Q where PlateNumber=%Q;", 
+                                        szTableName, szCommentStr, szPlateNumber);
 
     int ret = exec_sql_not_select(sql_modify);
 
@@ -547,9 +635,10 @@ static int modify_record_comment(const char *szTableName, char *szPlateNumber, c
     return ret;
 }
 
-static int delete_record_by_plate_number(const char *szTableName, char *szPlateNumber)
+static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber)
 {
-    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateNumber='%q';", szTableName, szPlateNumber);
+    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateNumber=%Q;", 
+                                        szTableName, szPlateNumber);
 
     int ret = exec_sql_not_select(sql_delete);
 
@@ -558,9 +647,10 @@ static int delete_record_by_plate_number(const char *szTableName, char *szPlateN
     return ret;
 }
 
-static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE ePlateType_t)
+static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType)
 {
-    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateType=%d;", szTableName, ePlateType_t);
+    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateType=%d;", 
+                                        szTableName, PlateType);
 
     int ret = exec_sql_not_select(sql_delete);
 
@@ -568,4 +658,3 @@ static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE ePla
 
     return ret;
 }
-

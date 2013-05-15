@@ -13,41 +13,8 @@
 #define FAILED  -1
 #define SUCCESS 0
 
-#define CMD_MSG_PATH    "/plate-cmd-msg"
-#define CMD_MSG_OFLAG   (O_CREAT|O_RDWR|O_EXCL)
-#define CMD_MSG_MODE    (0700)
-#define MAX_MSGQ_NUMS   8
-#define MAX_MSGQ_LENGTH 1
-#define DEFAULT_MQ_PRIO 0
-
-#define BL_CMD_IMPORT      1
-#define BL_CMD_EXPORT      2
-#define BL_CMD_INSERT      3
-#define BL_CMD_CLEAR       4
-#define BL_CMD_MODIFY      5
-#define BL_CMD_DELETE_BY_PLATE_NUMBER 6
-#define BL_CMD_DELETE_BY_PLATE_TYPE 7
-#define WL_CMD_IMPORT      8
-#define WL_CMD_EXPORT      9
-#define WL_CMD_INSERT      10
-#define WL_CMD_CLEAR       11
-#define WL_CMD_MODIFY      12
-#define WL_CMD_DELETE_BY_PLATE_NUMBER 13
-#define WL_CMD_DELETE_BY_PLATE_TYPE 14
-#define CMD_MAX             WL_CMD_DELETE_BY_PLATE_TYPE
-
-typedef struct {
-    void *p_arg1;
-    void *p_arg2;
-} CMD_ARG_T;
-
-static CMD_ARG_T CmdArgment[CMD_MAX] = {{0}};
-
 
 /*local static variables */
-static mqd_t CmdMsgQ = -1;
-static sem_t cmd_sem;
-static pthread_t process_tid = -1;
 static sqlite3 *db = NULL;
 static const char *szBlackListTable = "BlackList";
 static const char *szWhiteListTable = "WhiteList";
@@ -61,91 +28,6 @@ static int clear_record(const char *szTableName);
 static int modify_record_comment(const char *szTableName, char *szPlateNumber, char *szCommentStr);
 static int delete_record_by_plate_number(const char *szTableName, char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
-
-void *ExternCmdTask(void *pArg)
-{
-    pArg = NULL;
-    LOG("go into Extern Cmd Task.");
-
-    for (;;)
-    {
-        unsigned char cmd;
-        if (-1 == mq_receive(CmdMsgQ, (char *)&cmd, sizeof(cmd), NULL))
-        {
-            LOG("mq receive error:%s.", strerror(errno));
-            continue;
-        }
-
-//        if (retVal != sizeof(cmd))
-//        {
-//            continue;
-//        }
-//
-//        LOG("MessageQueue receive is %d", cmd);
-//
-        switch(cmd) 
-        {
-            case BL_CMD_IMPORT:
-                {
-                const char *szImportFileName    = (const char *)CmdArgment[BL_CMD_IMPORT].p_arg1;
-                const char *szRecordSeparator   = (const char *)CmdArgment[BL_CMD_IMPORT].p_arg2;
-                import(szBlackListTable, szImportFileName, szRecordSeparator);
-                LOG("Import BlackList Success!");
-                break;
-                }
-            case BL_CMD_EXPORT:
-                {
-                const char *szExportFileName    = (const char *)CmdArgment[BL_CMD_EXPORT].p_arg1;
-                const char *szRecordSeparator   = (const char *)CmdArgment[BL_CMD_EXPORT].p_arg2;
-                export(szBlackListTable, szExportFileName, szRecordSeparator);
-                LOG("Export BlackList Success!");
-                break;
-                }
-                break;
-            case BL_CMD_INSERT:
-                break;
-            case BL_CMD_CLEAR:
-                break;
-            case BL_CMD_MODIFY:
-                break;
-            case BL_CMD_DELETE_BY_PLATE_NUMBER:
-                break;
-            case BL_CMD_DELETE_BY_PLATE_TYPE:
-                break;
-            case WL_CMD_IMPORT:
-                {
-                const char *szImportFileName    = (const char *)CmdArgment[WL_CMD_IMPORT].p_arg1;
-                const char *szRecordSeparator   = (const char *)CmdArgment[WL_CMD_IMPORT].p_arg2;
-                import(szWhiteListTable, szImportFileName, szRecordSeparator);
-                LOG("Import WhiteList Success!");
-                break;
-                }
-            case WL_CMD_EXPORT:
-                {
-                const char *szExportFileName    = (const char *)CmdArgment[WL_CMD_EXPORT].p_arg1;
-                const char *szRecordSeparator   = (const char *)CmdArgment[WL_CMD_EXPORT].p_arg2;
-                export(szWhiteListTable, szExportFileName, szRecordSeparator);
-                LOG("Import WhiteList Success!");
-                break;
-                }
-            case WL_CMD_INSERT:
-                break;
-            case WL_CMD_CLEAR:
-                break;
-            case WL_CMD_MODIFY:
-                break;
-            case WL_CMD_DELETE_BY_PLATE_NUMBER:
-                break;
-            case WL_CMD_DELETE_BY_PLATE_TYPE:
-                break;
-            default:
-                LOG("DEFAULT");
-                break;
-        }
-    }
-
-    return NULL;
-}
 
 int bwl_init_database(const char *szDatabaseFilePath)
 {
@@ -169,13 +51,9 @@ int bwl_init_database(const char *szDatabaseFilePath)
         goto ErrReturn;
     }
 
-#if 0
-    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
+    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
-#endif 
-    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
-            (PlateNumber TEXT NOT NULL, PlateType INTEGER, Comment TEXT);", szBlackListTable);
-    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
+    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
 
     int rc_bl = sqlite3_exec(db, sSqlCreateBlacklist, 0, 0, NULL);
@@ -189,34 +67,6 @@ int bwl_init_database(const char *szDatabaseFilePath)
         goto ErrReturn;
     }
 
-    struct mq_attr mq_attr;
-    mq_attr.mq_maxmsg   = MAX_MSGQ_NUMS;
-    mq_attr.mq_msgsize  = MAX_MSGQ_LENGTH;
-    mq_unlink(CMD_MSG_PATH);
-    CmdMsgQ = mq_open(CMD_MSG_PATH, CMD_MSG_OFLAG, CMD_MSG_MODE, &mq_attr);
-    if (CmdMsgQ == -1)
-    {
-        LOG("Create Message Queue failed!\n");
-        goto ErrReturn;
-    }
-
-    if (-1 == sem_init(&cmd_sem, 0, 0))
-    {
-        LOG("Create Semaphore error:%s", strerror(errno));
-        goto ErrReturn;
-    }
-
-    if (pthread_create(&process_tid, NULL, ExternCmdTask, NULL) != 0)
-    {
-        LOG("Create pthread faile!\n");
-        goto ErrReturn;
-    }
-    if (pthread_detach(process_tid) != 0)
-    {
-        LOG("detach pthread failed:%s", strerror(errno));
-        goto ErrReturn;
-    }
-
     return SUCCESS;
 
 ErrReturn:
@@ -226,54 +76,22 @@ ErrReturn:
 
 int bl_import(const char *szImportFileName, const char *szRecordSeparator)
 {
-    CmdArgment[BL_CMD_IMPORT].p_arg1 = (void *)szImportFileName;
-    CmdArgment[BL_CMD_IMPORT].p_arg2 = (void *)szRecordSeparator;
-    unsigned char cmd = BL_CMD_IMPORT;
-    if (mq_send(CmdMsgQ, (char *)&cmd, 1, DEFAULT_MQ_PRIO) == -1)
-    {
-        LOG("MQ send error:%s\n", strerror(errno));
-        return FAILED;
-    }
-    return SUCCESS;
+    return import(szBlackListTable, szImportFileName, szRecordSeparator);
 }
 
 int wl_import(const char *szImportFileName, const char *szRecordSeparator)
 {
-    CmdArgment[WL_CMD_IMPORT].p_arg1 = (void *)szImportFileName;
-    CmdArgment[WL_CMD_IMPORT].p_arg2 = (void *)szRecordSeparator;
-    unsigned char cmd = WL_CMD_IMPORT;
-    if (mq_send(CmdMsgQ, (char *)&cmd, 1, DEFAULT_MQ_PRIO) == -1)
-    {
-        LOG("MQ send error:%s\n", strerror(errno));
-        return FAILED;
-    }
-    return SUCCESS;
+    return import(szWhiteListTable, szImportFileName, szRecordSeparator);
 }
 
 int bl_export(const char *szExportFileName, const char *szRecordSeparator)
 {
-    CmdArgment[BL_CMD_EXPORT].p_arg1 = (void *)szExportFileName;
-    CmdArgment[BL_CMD_EXPORT].p_arg2 = (void *)szRecordSeparator;
-    unsigned char cmd = WL_CMD_IMPORT;
-    if (mq_send(CmdMsgQ, (char *)&cmd, 1, DEFAULT_MQ_PRIO) == -1)
-    {
-        LOG("MQ send error:%s\n", strerror(errno));
-        return FAILED;
-    }
-    return SUCCESS;
+    return export(szBlackListTable, szExportFileName, szRecordSeparator);
 }
 
 int wl_export(const char *szExportFileName, const char *szRecordSeparator)
 {
-    CmdArgment[WL_CMD_EXPORT].p_arg1 = (void *)szExportFileName;
-    CmdArgment[WL_CMD_EXPORT].p_arg2 = (void *)szRecordSeparator;
-    unsigned char cmd = WL_CMD_EXPORT;
-    if (mq_send(CmdMsgQ, (char *)&cmd, 1, DEFAULT_MQ_PRIO) == -1)
-    {
-        LOG("MQ send error:%s\n", strerror(errno));
-        return FAILED;
-    }
-    return SUCCESS;
+    return export(szWhiteListTable, szExportFileName, szRecordSeparator);
 }
 
 int bl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
@@ -357,39 +175,65 @@ static char *local_getline(char *zPrompt, FILE *in, int csvFlag)
   int n;
   int inQuote = 0;
 
-  if( zPrompt && *zPrompt ){
-    printf("%s",zPrompt);
-    fflush(stdout);
+  if( zPrompt && *zPrompt )
+  {
+        printf("%s",zPrompt);
+        fflush(stdout);
   }
+
   nLine = 100;
-  zLine = malloc( nLine );
-  if( zLine==0 ) return SUCCESS;
-  n = 0;
-  while( 1 ){
-    if( n+100>nLine ){
-      nLine = nLine*2 + 100;
-      zLine = realloc(zLine, nLine);
-      if( zLine==0 ) return SUCCESS;
-    }
-    if( fgets(&zLine[n], nLine - n, in)==0 ){
-      if( n==0 ){
-        free(zLine);
-        return SUCCESS;
-      }
-      zLine[n] = 0;
-      break;
-    }
-    while( zLine[n] ){
-      if( zLine[n]=='"' ) inQuote = !inQuote;
-      n++;
-    }
-    if( n>0 && zLine[n-1]=='\n' && (!inQuote || !csvFlag) ){
-      n--;
-      if( n>0 && zLine[n-1]=='\r' ) n--;
-      zLine[n] = 0;
-      break;
-    }
+  zLine = malloc(nLine);
+
+  if(zLine==0) 
+  {
+      return SUCCESS;
   }
+
+  n = 0;
+
+  for(;;)
+  {
+        if(n+100 > nLine)
+        {
+            nLine = nLine*2 + 100;
+            zLine = realloc(zLine, nLine);
+            if(0 == zLine) 
+            {
+                return SUCCESS;
+            }
+        }
+
+        if(0 == fgets(&zLine[n], nLine-n, in))
+        {
+            if(0 == n)
+            {
+                free(zLine);
+                return SUCCESS;
+            }
+            zLine[n] = 0;
+            break;
+        }
+
+        while(zLine[n])
+        {
+          if('"' == zLine[n]) 
+          {
+              inQuote = !inQuote;
+          }
+          n++;
+        }
+        if(n>0 && '\n'==zLine[n-1] && (!inQuote || !csvFlag))
+        {
+          n--;
+          if(n>0 && '\r'==zLine[n-1]) 
+          {
+              n--;
+          }
+          zLine[n] = 0;
+          break;
+        }
+  }
+
   zLine = realloc( zLine, n+1 );
   return zLine;
 }
@@ -677,9 +521,12 @@ static int query(const char *szTableName, char *szPlateNumber, PLATE_RECORD_T *p
             }
         }
 
-        pPlateRecord->szPlateNumber = szPlateNumber;
-        pPlateRecord->PlateType = iTempPlateType;
-        pPlateRecord->szCommentStr = (char *)sTempCommentStr;
+        if (NULL != pPlateRecord)
+        {
+            pPlateRecord->szPlateNumber = szPlateNumber;
+            pPlateRecord->PlateType = iTempPlateType;
+            pPlateRecord->szCommentStr = (char *)sTempCommentStr;
+        }
 
         return 1;
     }
@@ -700,24 +547,35 @@ static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord)
     return rc;
 }
 
+//static int clear_record(const char *szTableName)
+//{
+//
+//    LOG("Clear record enter.");
+//    char *sql_drop = sqlite3_mprintf("DROP TABLE %q;", szTableName);
+//    int rc = exec_sql_not_select(sql_drop);
+//
+//    sqlite3_free(sql_drop);
+//
+//    if (rc == FAILED)
+//    {
+//        return FAILED;
+//    }
+//
+//    LOG("Clear record enter second.");
+//
+//    char *sql_create = sqlite3_mprintf("CREATE TABLE %q(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER,\                                             Comment TEXT);", szTableName);
+//    rc = exec_sql_not_select(sql_create);
+//
+//    sqlite3_free(sql_create);
+//
+//    return rc;
+//}
 static int clear_record(const char *szTableName)
 {
+    char *sql_clear = sqlite3_mprintf("DELETE FROM %q;", szTableName);
+    int rc = exec_sql_not_select(sql_clear);
 
-    char *sql_drop = sqlite3_mprintf("DROP TABLE %q;", szTableName);
-    int rc = exec_sql_not_select(sql_drop);
-
-    sqlite3_free(sql_drop);
-
-    if (rc == FAILED)
-    {
-        return FAILED;
-    }
-
-    char *sql_create = sqlite3_mprintf("CREATE TABLE %q(PlateNumber TEXT PRIMARY KEY, PlateType INTEGER,\
-                                            Comment TEXT);", szTableName);
-    rc = exec_sql_not_select(sql_create);
-
-    sqlite3_free(sql_create);
+    sqlite3_free(sql_clear);
 
     return rc;
 }

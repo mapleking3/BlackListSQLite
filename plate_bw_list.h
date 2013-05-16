@@ -10,6 +10,7 @@ typedef enum {
     YELLOW  = 2,
     WHITE   = 3,
     BLACK   = 4,
+    UNKNOW  = 5,
 } PLATE_TYPE;
 
 /**@struct  PLATE_RECORD_T

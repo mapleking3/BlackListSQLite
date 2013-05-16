@@ -387,9 +387,12 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         sqlite3_step(pStmt);
         rc = sqlite3_reset(pStmt);
         free(zLine);
-        if(rc!=SQLITE_OK)
+
+        //if(rc!=SQLITE_OK)
+        //SQLITE_CONSTRAINT: abort due to constraint violation
+        if (SQLITE_OK != rc && SQLITE_CONSTRAINT != rc)
         {
-            LOG("Error:%s.", sqlite3_errmsg(db));
+            LOG("Error:%s", sqlite3_errmsg(db));
             zCommit = "ROLLBACK";
             rc = 1;
             break; /* from while */

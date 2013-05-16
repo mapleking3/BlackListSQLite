@@ -461,8 +461,8 @@ static int export(const char *szTableName, const char *szExportFileName, const c
                         len = strlen(szTemp);
                         if (fieldCount - 1 > currField)
                         {
-                            szTemp[strlen(szTemp)] = ';';
-                            szTemp[strlen(szTemp)+1] = 0;
+                            szTemp[len] = ';';
+                            szTemp[len+1] = 0;
                         }
                         if (0 == currField)
                         {

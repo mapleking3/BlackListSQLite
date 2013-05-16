@@ -447,7 +447,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
         if (SQLITE_ROW == ret)
         {
             int currField;
-            char *str;
+            char *str = NULL;
             char *szTemp = NULL;
 
             for (currField = 0; currField < fieldCount; ++currField)
@@ -521,11 +521,14 @@ static int export(const char *szTableName, const char *szExportFileName, const c
                         break;
                 }
             }
-            int len = strlen(str);
-            str[len] = '\n';
-            str[len+1] = 0;
-            fwrite(str, strlen(str), 1, fp);
-            //fwrite("\n", 1, 1, fp);
+
+            if (NULL != str)
+            {
+                int len = strlen(str);
+                str[len] = '\n';
+                str[len+1] = 0;
+                fwrite(str, strlen(str), 1, fp);
+            }
 
         }
         else if (SQLITE_DONE == ret)

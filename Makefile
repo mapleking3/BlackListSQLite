@@ -1,24 +1,29 @@
 APP		:= exe
+
+CC      := $(shell which gcc)
+CXX     := $(shell which g++)
+AR      := $(shell which ar)
+LD      := $(shell which ld)
+
+CFLAGS	+= -g -Wall -O2
+LD_FLAG += -lrt -lsqlite3 -pthread -L. 
+
 CSCRS	:= test.c plate_bw_list.c
 CXXSCRS := 
 COBJS	:= $(CSCRS:.c=.o)
 CXXOBJS := $(CXXSCRS:.cpp=.o)
 OBJS	:= $(COBJS) $(CXXOBJS)
 
-LD_FLAG := -lrt -lsqlite3 -pthread -L. 
-CFLAGS	:= -g -Wall
 
 LIBS	:= 
 
 %.o:%.c 
-	gcc $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) -c $< -o $@
 %.o:%.cpp
-	g++ $(CFLAGS) -c $< -o $@
+	$(CXX) $(CFLAGS) -c $< -o $@
 $(APP):$(OBJS)
-	g++ $(CFLAGS) $(OBJS) -o $@ $(LD_FLAG)  
+	$(CXX) $(CFLAGS) $(OBJS) -o $@ $(LD_FLAG)  
 
 .PHONY: clean
 clean:
 	-@rm -rf $(COBJS) $(APP) test.db
-#-@rm -rf `ls -Itest.c -Itest.h -IMakefile`
-

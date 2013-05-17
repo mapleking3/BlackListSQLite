@@ -436,11 +436,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
 
     if (SQLITE_OK != sqlite3_prepare_v2(db, sql_select, -1, &stmt, NULL))
     {
-        if (NULL != stmt)
-        {
-            sqlite3_finalize(stmt);
-        }
-        return FAILED;
+        goto ErrReturn;
     }
 
     int fieldCount = sqlite3_column_count(stmt);
@@ -532,9 +528,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
 
                 if (currField < fieldCount -1)
                 {
-                    len = strlen(str);
-                    str[len] = ';';
-                    str[len+1] = 0;
+                    str = strcat(str, szRecordSeparator);
                 }
             }
 
@@ -556,14 +550,20 @@ static int export(const char *szTableName, const char *szExportFileName, const c
         }
     }
 
-    sqlite3_finalize(stmt);
-    stmt = NULL;
+    if (stmt != NULL)
+    {
+        sqlite3_finalize(stmt);
+        stmt = NULL;
+    }
     fclose(fp);
     return SUCCESS;
 
 ErrReturn:
-    sqlite3_finalize(stmt);
-    stmt = NULL;
+    if (stmt != NULL)
+    {
+        sqlite3_finalize(stmt);
+        stmt = NULL;
+    }
     fclose(fp);
     return FAILED;
 }

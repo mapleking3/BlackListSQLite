@@ -448,6 +448,11 @@ static int export(const char *szTableName, const char *szExportFileName, const c
         {
             int currField;
             char *str = (char *)malloc(1);
+            if (str == NULL)
+            {
+                LOG("malloc error");
+                return FAILED;
+            }
             *str = 0;
             char *szTemp = NULL;
             char *temp = NULL;
@@ -460,32 +465,28 @@ static int export(const char *szTableName, const char *szExportFileName, const c
                 {
                     case SQLITE_INTEGER:
                         szTemp = sqlite3_mprintf("%d", sqlite3_column_int(stmt, currField));
-                        LOG("BEFORE REALOC INT");
-                        str = (char *)realloc(str, strlen(str)+strlen(szTemp)+20);
+                        str = realloc(str, strlen(str)+strlen(szTemp)+3);
                         str = strcat(str, szTemp);
-                        LOG("STR is %s", str);
                         sqlite3_free(szTemp);
                         szTemp = NULL;
                         break;
                     case SQLITE_FLOAT:
                         szTemp = sqlite3_mprintf("%lf", sqlite3_column_double(stmt, currField));
-                        str = (char *)realloc(str, strlen(str)+strlen(szTemp)+2);
+                        str = realloc(str, strlen(str)+strlen(szTemp)+3);
                         str = strcat(str, szTemp);
-                        LOG("STR is %s", str);
                         sqlite3_free(szTemp);
                         szTemp = NULL;
                         break;
                     case SQLITE_TEXT:
                         szTemp = (char *)sqlite3_column_text(stmt, currField);
-                        temp = (char *)malloc(strlen(szTemp)*sizeof(char)+10*sizeof(char));
-                        str = realloc(str, strlen(str)+strlen(temp)+10);
+                        temp = (char *)malloc(strlen(szTemp)*sizeof(char)+3*sizeof(char));
                         strcpy(temp+1, szTemp);
-                        temp[0] = '"';
-                        len = strlen(temp);
-                        temp[len] = '"';
-                        temp[len+1] = 0;
+                        len = strlen(szTemp);
+                        *temp = '"';
+                        *(temp+len+1) = '"';
+                        *(temp+len+2) = 0;
+                        str = realloc(str, strlen(str)+strlen(temp)+3);
                         str = strcat(str, temp);
-                        LOG("STR is %s", str);
                         free(temp);
                         temp = NULL;
                         szTemp = NULL;
@@ -493,19 +494,21 @@ static int export(const char *szTableName, const char *szExportFileName, const c
                     default:
                         break;
                 }
+                if (currField < fieldCount-1)
+                {
+                    len = strlen(str);
+                    str[len] = ';';
+                    str[len+1] = 0;
+                }
             }
 
-            if (NULL != str)
-            {
-                int len = strlen(str);
-                str[len] = '\n';
-                str[len+1] = 0;
-                LOG("STR IS %s", str);
-                fwrite(str, strlen(str), 1, fp);
-                fflush(fp);
-                free(str);
-                str = NULL;
-            }
+            int len = strlen(str);
+            str[len] = '\n';
+            str[len+1] = 0;
+            fwrite(str, strlen(str), 1, fp);
+            fflush(fp);
+            free(str);
+            str = NULL;
         }
         else if (SQLITE_DONE == ret)
         {

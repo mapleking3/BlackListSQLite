@@ -444,11 +444,11 @@ static int export(const char *szTableName, const char *szExportFileName, const c
     }
 
     int fieldCount = sqlite3_column_count(stmt);
-    const int LENGTH = 20;
+    const int LENGTH = 50;
     int currField = 0;
     char *szTemp = NULL;
     char *temp = NULL;
-    int len;
+    int len = 0;
 
     for (;;)
     {
@@ -520,7 +520,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
                         len = strlen(str);
                         str[len] = '"';
                         str[len+1] = 0;
-                        strcat(str, szTemp);
+                        str = strcat(str, szTemp);
                         len = strlen(str);
                         str[len] = '"';
                         str[len+1] = 0;

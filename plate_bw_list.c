@@ -447,7 +447,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
         if (SQLITE_ROW == ret)
         {
             int currField;
-            char *str = (char *)malloc(1);
+            char *str = (char *)malloc(2);
             if (str == NULL)
             {
                 LOG("malloc error");
@@ -455,7 +455,6 @@ static int export(const char *szTableName, const char *szExportFileName, const c
             }
             *str = 0;
             char *szTemp = NULL;
-            char *temp = NULL;
 
             for (currField = 0; currField < fieldCount; ++currField)
             {
@@ -479,16 +478,14 @@ static int export(const char *szTableName, const char *szExportFileName, const c
                         break;
                     case SQLITE_TEXT:
                         szTemp = (char *)sqlite3_column_text(stmt, currField);
-                        temp = (char *)malloc(strlen(szTemp)*sizeof(char)+3*sizeof(char));
-                        strcpy(temp+1, szTemp);
-                        len = strlen(szTemp);
-                        *temp = '"';
-                        *(temp+len+1) = '"';
-                        *(temp+len+2) = 0;
-                        str = realloc(str, strlen(str)+strlen(temp)+3);
-                        str = strcat(str, temp);
-                        free(temp);
-                        temp = NULL;
+                        len = strlen(str);
+                        str[len] = '"';
+                        str[len++] = 0;
+                        str = realloc(str, strlen(str)+strlen(szTemp)+3);
+                        str = strcat(str, szTemp);
+                        len = strlen(str);
+                        str[len] = '"';
+                        str[len++] = 0;
                         szTemp = NULL;
                         break;
                     default:

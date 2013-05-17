@@ -436,7 +436,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
     }
 
     int fieldCount = sqlite3_column_count(stmt);
-    const int LENGTH = 50;
+    const unsigned int LENGTH = 50;
     int currField = 0;
     char *szTemp = NULL;
     char *temp = NULL;

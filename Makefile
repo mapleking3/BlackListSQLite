@@ -1,29 +1,45 @@
-APP		:= exe
+APP			:= test
+all:		$(APP)
 
-CC      := $(shell which gcc)
-CXX     := $(shell which g++)
-AR      := $(shell which ar)
-LD      := $(shell which ld)
+CC			:= $(shell which gcc)
+CXX			:= $(shell which g++)
+AR			:= $(shell which ar)
+LD			:= $(shell which ld)
 
-CFLAGS	+= -g -Wall -O2
-LD_FLAG += -lrt -lsqlite3 -pthread -L. 
+CFLAGS		+= -Wall -W -O2
 
-CSCRS	:= test.c plate_bw_list.c
-CXXSCRS := 
-COBJS	:= $(CSCRS:.c=.o)
-CXXOBJS := $(CXXSCRS:.cpp=.o)
-OBJS	:= $(COBJS) $(CXXOBJS)
+LD_FLAGS	+= -lpthread -lsqlite3 -lrt
 
+INC_FLAG    += 
 
-LIBS	:= 
+APP_ROOT	:= $(shell pwd)
 
-%.o:%.c 
-	$(CC) $(CFLAGS) -c $< -o $@
-%.o:%.cpp
-	$(CXX) $(CFLAGS) -c $< -o $@
-$(APP):$(OBJS)
-	$(CXX) $(CFLAGS) $(OBJS) -o $@ $(LD_FLAG)  
+export CC CXX AR LD CFLAGS INC_FLAG LD_FLAGS 
 
-.PHONY: clean
+CSRCS		:= test.c plate_bw_list.c
+CXXSRCS		:= 
+
+CXXOBJS		:= $(CXXSRCS:.cpp=.o)
+COBJS		:= $(CSRCS:.c=.o)
+OBJS		:= $(CXXOBJS) $(COBJS)
+
+DEPS		:= $(OBJS:.o=.d)
+
+%.o : %.c
+	$(CC) $(CFLAGS) $(INC_FLAG) -c $< -o $@
+%.d : %.c
+	@set -e;$(CC) $(CFLAGS) $(INC_FLAG) $(CPPFLAGS) -MM $< | sed -e 's/$(basename $@).o/$(basename $@).o $(basename $@).d/' > $@
+%.o : %.cpp
+	$(CXX) $(CFLAGS) $(INC_FLAG) -c $< -o $@
+%.d : %.cpp
+	@set -e;$(CXX) $(CFLAGS) $(INC_FLAG) $(CPPFLAGS) -MM $< | sed -e 's/$(basename $@).o/$(basename $@).o $(basename $@).d/' > $@
+
+.PHONY:	$(APP)
+
+$(APP) : $(OBJS)
+	$(CXX) $(OBJS) -o $@ $(LD_FLAGS)
+
 clean:
-	-@rm -rf $(COBJS) $(APP) test.db
+	$(RM) -f $(OBJS) $(DEPS) $(APP) $(MODDEP)
+
+sinclude $(DEPS)

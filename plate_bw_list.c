@@ -55,8 +55,12 @@ int bwl_init_database(const char *szDatabaseFilePath)
         goto ErrReturn;
     }
 
+#if 0
     char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
+#endif
+    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
+            (PlateNumber TEXT NOT NULL, PlateType INTEGER, Comment TEXT);", szBlackListTable);
     char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
 
@@ -440,96 +444,107 @@ static int export(const char *szTableName, const char *szExportFileName, const c
     }
 
     int fieldCount = sqlite3_column_count(stmt);
+    const int LENGTH = 20;
+    int currField = 0;
+    char *szTemp = NULL;
+    char *temp = NULL;
+    int len;
 
     for (;;)
     {
         int ret = sqlite3_step(stmt);
         if (SQLITE_ROW == ret)
         {
-            int currField;
-            char *str = NULL;
-            char *szTemp = NULL;
+            char *str = (char *)malloc(LENGTH);
+            if (NULL == str)
+            {
+                LOG("malloc error");
+                goto ErrReturn;
+            }
+            memset(str, 0, LENGTH);
 
             for (currField = 0; currField < fieldCount; ++currField)
             {
                 int type = sqlite3_column_type(stmt, currField);
-                int len;
                 switch(type)
                 {
                     case SQLITE_INTEGER:
                         szTemp = sqlite3_mprintf("%d", sqlite3_column_int(stmt, currField));
-                        len = strlen(szTemp);
-                        if (fieldCount - 1 > currField)
+                        if (strlen(szTemp)+strlen(str)+2 > LENGTH)
                         {
-                            szTemp[len] = ';';
-                            szTemp[len+1] = 0;
+                            temp = realloc(str, strlen(szTemp)+strlen(str)+2);
+                            if (NULL == temp)
+                            {
+                                LOG("realloc error");
+                                free(str);
+                                goto ErrReturn;
+                            }
+                            str = temp;
+                            temp = NULL;
                         }
-                        if (0 == currField)
-                        {
-                            str = szTemp;
-                        }
-                        else
-                        {
-                            str = strcat(str, szTemp);
-                        }
+                        str = strcat(str, szTemp);
                         sqlite3_free(szTemp);
-                        break;
-                    case SQLITE_TEXT:
-                        szTemp = (char *)sqlite3_column_text(stmt, currField);
-                        len = strlen(szTemp);
-                        szTemp[-1] = '"';
-                        szTemp[len] = '"';
-                        if (fieldCount - 1 == currField)
-                        {
-                            szTemp[len+1] = 0;
-                        }
-                        else
-                        {
-                            szTemp[len+1] = ';';
-                            szTemp[len+2] = 0;
-                        }
-
-                        if (0 == currField)
-                        {
-                            str = szTemp-1;
-                        }
-                        else
-                        {
-                            strcat(str, szTemp-1);
-                        }
                         break;
                     case SQLITE_FLOAT:
                         szTemp = sqlite3_mprintf("%lf", sqlite3_column_double(stmt, currField));
-                        len = strlen(szTemp);
-                        if (fieldCount -1 > currField)
+                        if (strlen(szTemp)+strlen(str)+2 > LENGTH)
                         {
-                            szTemp[len] = ';';
-                            szTemp[len+1] = 0;
+                            temp = realloc(str, strlen(szTemp)+strlen(str)+2);
+                            if (NULL == temp)
+                            {
+                                LOG("realloc error");
+                                free(str);
+                                goto ErrReturn;
+                            }
+                            str = temp;
+                            temp = NULL;
                         }
-
-                        if (0 == currField)
-                        {
-                            str = szTemp;
-                        }
-                        else 
-                        {
-                            str = strcat(str, szTemp);
-                        }
+                        str = strcat(str, szTemp);
                         sqlite3_free(szTemp);
+                        szTemp = NULL;
+                        break;
+                    case SQLITE_TEXT:
+                        szTemp = (char *)sqlite3_column_text(stmt, currField);
+                        if (strlen(szTemp)+strlen(str)+4 > LENGTH)
+                        {
+                            temp = realloc(str, strlen(szTemp)+strlen(str)+4);
+                            if (NULL == temp)
+                            {
+                                LOG("realloc error");
+                                free(str);
+                                goto ErrReturn;
+                            }
+                            str = temp;
+                            temp = NULL;
+                        }
+                        len = strlen(str);
+                        str[len] = '"';
+                        str[len+1] = 0;
+                        strcat(str, szTemp);
+                        len = strlen(str);
+                        str[len] = '"';
+                        str[len+1] = 0;
+                        szTemp = NULL;
                         break;
                     default:
                         break;
                 }
+
+                if (currField < fieldCount -1)
+                {
+                    len = strlen(str);
+                    str[len] = ';';
+                    str[len+1] = 0;
+                }
             }
 
-            if (NULL != str)
-            {
-                int len = strlen(str);
-                str[len] = '\n';
-                str[len+1] = 0;
-                fwrite(str, strlen(str), 1, fp);
-            }
-
+            len = strlen(str);
+            str[len] = '\n';
+            str[len+1] = 0;
+            fwrite(str, len+1, 1, fp);
+            fflush(fp);
+            free(str);
+            str = NULL;
         }
         else if (SQLITE_DONE == ret)
         {
@@ -537,10 +552,20 @@ static int export(const char *szTableName, const char *szExportFileName, const c
         }
         else
         {
-            return FAILED;
+            goto ErrReturn;
         }
     }
+
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    fclose(fp);
     return SUCCESS;
+
+ErrReturn:
+    sqlite3_finalize(stmt);
+    stmt = NULL;
+    fclose(fp);
+    return FAILED;
 }
 
 static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)

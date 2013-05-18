@@ -1,3 +1,11 @@
+/** 
+ * @FileName:   plate_bw_list.h
+ * @Brief:      head file
+ * @Author:     Retton
+ * @Version:    V1.0
+ * @Date:       2013-05-17
+ * Copyright:   2012-2038 Anhui CHAOYUAN Info Technology Co.Ltd
+ */
 #ifndef _PLATE_BW_LIST_H_
 #define _PLATE_BW_LIST_H_
 
@@ -30,6 +38,14 @@ typedef struct {
  *@return   -1:success 0:failed
  */
 extern int bwl_init_database(const char *szDatabaseFilePath);
+
+/**@fn      int bwl_close_database(void)
+ *@brief    close database connection and release resouces
+ *@brief    Author/Data Retton/20130513
+ *@param    void
+ *@return   -1:success 0:failed
+ */
+extern int bwl_close_database(void);
 
 /**@fn      int bl_import(const char *szImportFileName, const char *szRecordSeparator)
  *@brief    import records to blacklist from sepcified file

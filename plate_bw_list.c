@@ -1,3 +1,11 @@
+/** 
+ * @FileName:   plate_bw_list.c
+ * @Brief:      plate blacklist and whitelist realized in sqlite3
+ * @Author:     Retton
+ * @Version:    V1.0
+ * @Date:       2013-05-17
+ * Copyright:   2012-2038 Anhui CHAOYUAN Info Technology Co.Ltd
+ */
 #include <sqlite3.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -77,6 +85,19 @@ ErrReturn:
     sqlite3_close(db);
     return FAILED;
 }
+
+int bwl_close_database(void)
+{
+    if (SQLITE_OK != sqlite3_close(db))
+    {
+        return FAILED;
+    }
+    else 
+    {
+        return SUCCESS;
+    }
+}
+
 
 int bl_import(const char *szImportFileName, const char *szRecordSeparator)
 {

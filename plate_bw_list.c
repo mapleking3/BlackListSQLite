@@ -25,6 +25,9 @@
 
 /*local static variables */
 static sqlite3 *db = NULL;
+static sqlite3 *inMemoryDb = NULL;
+static sqlite3 *src_db = NULL;
+static sqlite3_backup *backup = NULL;
 static sqlite3_mutex *db_mutex = NULL;
 static const char *szBlackListTable = "BlackList";
 static const char *szWhiteListTable = "WhiteList";
@@ -46,11 +49,43 @@ int bwl_init_database(const char *szDatabaseFilePath)
         return FAILED;
     }
 
-    if (SQLITE_OK != sqlite3_open(szDatabaseFilePath, &db))
+    if (SQLITE_OK != sqlite3_open(szDatabaseFilePath, &src_db))
     {
-        LOG("Can't open database:%s.", sqlite3_errmsg(db));
-        sqlite3_close(db);
+        LOG("Can't open database:%s.", sqlite3_errmsg(src_db));
+        sqlite3_close(src_db);
         return FAILED;
+    }
+
+    db = src_db;
+
+    if (SQLITE_OK == sqlite3_open(":memory:", &inMemoryDb))
+    {
+        backup = sqlite3_backup_init(inMemoryDb, ":memory:", src_db, szDatabaseFilePath);
+        if (NULL == backup)
+        {
+            LOG("back up error:%s", sqlite3_errmsg(db));
+            sqlite3_close(src_db);
+            sqlite3_close(db);
+            return FAILED;
+        }
+
+        for ( ; ; )
+        {
+            int ret = sqlite3_backup_step(backup, -1);
+            if (SQLITE_OK == ret)
+            {
+                continue;
+            }
+            else if (SQLITE_DONE == ret)
+            {
+                db = inMemoryDb;
+                break;
+            }
+            else 
+            {
+                break;
+            }
+        }
     }
 
     if (NULL == (db_mutex = sqlite3_db_mutex(db)))
@@ -79,7 +114,7 @@ int bwl_init_database(const char *szDatabaseFilePath)
 
     // if blacklist not exists, create it
     char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
-            (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
+            (PlateNumber TEXT NOT NULL, PlateType INTEGER, Comment TEXT);", szBlackListTable);
     int rc_bl = sqlite3_exec(db, sSqlCreateBlacklist, 0, 0, NULL);
     sqlite3_free(sSqlCreateBlacklist);
     if (SQLITE_OK != rc_bl)

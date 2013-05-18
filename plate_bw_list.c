@@ -24,7 +24,8 @@
         } while(0)
 
 /*local static variables */
-static sqlite3 *db;
+static sqlite3 *db = NULL;
+static sqlite3_mutex *db_mutex = NULL;
 static const char *szBlackListTable = "BlackList";
 static const char *szWhiteListTable = "WhiteList";
 
@@ -42,54 +43,81 @@ int bwl_init_database(const char *szDatabaseFilePath)
     if (SQLITE_OK != sqlite3_config(SQLITE_CONFIG_SERIALIZED))
     {
         LOG("Configure Sqlite3 error:%s.", sqlite3_errmsg(db));
-        goto ErrReturn;
+        return FAILED;
     }
 
     if (SQLITE_OK != sqlite3_open(szDatabaseFilePath, &db))
     {
         LOG("Can't open database:%s.", sqlite3_errmsg(db));
-        goto ErrReturn;
+        sqlite3_close(db);
+        return FAILED;
     }
 
+    if (NULL == (db_mutex = sqlite3_db_mutex(db)))
+    {
+        LOG("SQLITE IS NOT IN SERIALIZED MOD");
+        sqlite3_close(db);
+        return FAILED;
+    }
+
+    sqlite3_mutex_enter(db_mutex);
     if (SQLITE_OK != sqlite3_exec(db, "PRAGMA page_size=4096;", 0, 0, NULL))
     {
         LOG("Can't set page_size:%s.", sqlite3_errmsg(db));
-        goto ErrReturn;
+        sqlite3_mutex_leave(db_mutex);
+        sqlite3_close(db);
+        return FAILED;
     }
 
     if (SQLITE_OK != sqlite3_exec(db, "PRAGMA cache_size=8000;", 0, 0, NULL))
     {
         LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
-        goto ErrReturn;
+        sqlite3_mutex_leave(db_mutex);
+        sqlite3_close(db);
+        return FAILED;
     }
 
+    // if blacklist not exists, create it
     char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
-    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
-            (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
-
     int rc_bl = sqlite3_exec(db, sSqlCreateBlacklist, 0, 0, NULL);
-    int rc_wl = sqlite3_exec(db, sSqlCreateWhitelist, 0, 0, NULL);
     sqlite3_free(sSqlCreateBlacklist);
-    sqlite3_free(sSqlCreateWhitelist);
-
-    if (rc_bl != SQLITE_OK || rc_wl != SQLITE_OK)
+    if (SQLITE_OK != rc_bl)
     {
-        LOG("Create BlackList error:%s.", sqlite3_errmsg(db));
-        goto ErrReturn;
+        LOG("Create BlackList Error:%s", sqlite3_errmsg(db));
+        sqlite3_mutex_leave(db_mutex);
+        sqlite3_close(db);
+        return FAILED;
     }
 
-    return SUCCESS;
+    // if whitelist not exists, create it
+    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
+            (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
+    int rc_wl = sqlite3_exec(db, sSqlCreateWhitelist, 0, 0, NULL);
+    sqlite3_free(sSqlCreateWhitelist);
+    if (SQLITE_OK != rc_wl)
+    {
+        LOG("Create WhiteList error:%s.", sqlite3_errmsg(db));
+        sqlite3_mutex_leave(db_mutex);
+        sqlite3_close(db);
+        return FAILED;
+    }
 
-ErrReturn:
-    sqlite3_close(db);
-    return FAILED;
+    sqlite3_mutex_leave(db_mutex);
+
+    return SUCCESS;
 }
 
 int bwl_close_database(void)
 {
-    if (SQLITE_OK != sqlite3_close(db))
+    sqlite3_mutex_free(db_mutex);
+    int ret = sqlite3_close(db);
+    if (SQLITE_OK != ret)
     {
+        if (SQLITE_BUSY == ret)
+        {
+            LOG("unfinalized prepared statements or unfinished sqlite3_backup objects");
+        }
         return FAILED;
     }
     else 
@@ -184,12 +212,15 @@ int wl_clear_records(void)
 /* local function */
 static int exec_sql_not_select(char *sql)
 {
+    sqlite3_mutex_enter(db_mutex);
     int ret = sqlite3_exec(db, sql, 0, 0, NULL);
     if (ret != SQLITE_OK)
     {
         LOG("exec sql error:%s", sqlite3_errmsg(db));
+        sqlite3_mutex_leave(db_mutex);
         return FAILED;
     }
+    sqlite3_mutex_leave(db_mutex);
     return SUCCESS;
 }
 
@@ -278,6 +309,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         return FAILED;
     }
     nByte = strlen30(zSql);
+    sqlite3_mutex_enter(db_mutex);
     int rc = sqlite3_prepare(db, zSql, -1, &pStmt, 0);
     sqlite3_free(zSql);
     if( rc )
@@ -286,9 +318,11 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         {
             sqlite3_finalize(pStmt);
         }
+        sqlite3_mutex_leave(db_mutex);
         LOG("Error: %s.", sqlite3_errmsg(db));
         return FAILED;
     }
+    sqlite3_mutex_leave(db_mutex);
 
     nCol = sqlite3_column_count(pStmt);
     sqlite3_finalize(pStmt);
@@ -312,6 +346,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     }
     zSql[j++] = ')';
     zSql[j] = 0;
+    sqlite3_mutex_enter(db_mutex);
     rc = sqlite3_prepare(db, zSql, -1, &pStmt, 0);
     free(zSql);
     if(rc)
@@ -321,8 +356,10 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         {
             sqlite3_finalize(pStmt);
         }
+        sqlite3_mutex_leave(db_mutex);
         return FAILED;
     }
+    sqlite3_mutex_leave(db_mutex);
     in = fopen(zFile, "rb");
     if( in==0 )
     {
@@ -339,8 +376,18 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         return FAILED;
     }
 
+    sqlite3_mutex_enter(db_mutex);
     //BEGIN IMMEDIATE avoid deadlock
-    sqlite3_exec(db, "BEGIN IMMEDIATE", 0, 0, 0);
+    if (SQLITE_OK != sqlite3_exec(db, "BEGIN IMMEDIATE", 0, 0, 0))
+    {
+        LOG("BEGIN TRANSACTION Error:%s", sqlite3_errmsg(db));
+        fclose(in);
+        sqlite3_mutex_leave(db_mutex);
+        sqlite3_finalize(pStmt);
+        return FAILED;
+    }
+    sqlite3_mutex_leave(db_mutex);
+
     zCommit = "COMMIT";
 
     while( (zLine = local_getline(0, in, 1))!=0 )
@@ -405,6 +452,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
             sqlite3_bind_text(pStmt, i+1, azCol[i], -1, SQLITE_STATIC);
         }
 
+        sqlite3_mutex_enter(db_mutex);
         sqlite3_step(pStmt);
         rc = sqlite3_reset(pStmt);
         free(zLine);
@@ -414,10 +462,12 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         if (SQLITE_OK != rc && SQLITE_CONSTRAINT != rc)
         {
             LOG("Error:%s", sqlite3_errmsg(db));
+            sqlite3_mutex_leave(db_mutex);
             zCommit = "ROLLBACK";
             rc = 1;
             break; /* from while */
         }
+        sqlite3_mutex_leave(db_mutex);
     } /* end while */
 
     free(azCol);
@@ -591,6 +641,7 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
     
     char *sql_select = sqlite3_mprintf("SELECT * FROM %q where PlateNumber=%Q;", szTableName, szPlateNumber);
 
+    sqlite3_mutex_enter(db_mutex);
     if (SQLITE_OK != sqlite3_prepare_v2(db, sql_select, -1, &stmt_select, 0))
     {
         if (NULL != stmt_select)
@@ -598,9 +649,11 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
             sqlite3_finalize(stmt_select);
         }
         LOG("Sqlite3 prepare v2 error:%s", sqlite3_errmsg(db));
+        sqlite3_mutex_leave(db_mutex);
         sqlite3_free(sql_select);
         return FAILED;
     }
+    sqlite3_mutex_leave(db_mutex);
 
     sqlite3_free(sql_select);
 

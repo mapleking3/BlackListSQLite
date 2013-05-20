@@ -58,35 +58,36 @@ int bwl_init_database(const char *szDatabaseFilePath)
 
     db = src_db;
 
-    if (SQLITE_OK == sqlite3_open(":memory:", &inMemoryDb))
-    {
-        backup = sqlite3_backup_init(inMemoryDb, ":memory:", src_db, szDatabaseFilePath);
-        if (NULL == backup)
-        {
-            LOG("back up error:%s", sqlite3_errmsg(db));
-            sqlite3_close(src_db);
-            sqlite3_close(db);
-            return FAILED;
-        }
+    //if (SQLITE_OK == sqlite3_open(":memory:", &inMemoryDb))
+    //{
+    //    backup = sqlite3_backup_init(inMemoryDb, "main", src_db, "main");
+    //    if (NULL == backup)
+    //    {
+    //        LOG("back up error:%s", sqlite3_errmsg(db));
+    //        sqlite3_close(src_db);
+    //        sqlite3_close(db);
+    //        return FAILED;
+    //    }
 
-        for ( ; ; )
-        {
-            int ret = sqlite3_backup_step(backup, -1);
-            if (SQLITE_OK == ret)
-            {
-                continue;
-            }
-            else if (SQLITE_DONE == ret)
-            {
-                db = inMemoryDb;
-                break;
-            }
-            else 
-            {
-                break;
-            }
-        }
-    }
+    //    for ( ; ; )
+    //    {
+    //        int ret = sqlite3_backup_step(backup, -1);
+    //        if (SQLITE_OK == ret)
+    //        {
+    //            continue;
+    //        }
+    //        else if (SQLITE_DONE == ret)
+    //        {
+    //            LOG("OK");
+    //            db = inMemoryDb;
+    //            break;
+    //        }
+    //        else 
+    //        {
+    //            break;
+    //        }
+    //    }
+    //}
 
     if (NULL == (db_mutex = sqlite3_db_mutex(db)))
     {
@@ -96,21 +97,21 @@ int bwl_init_database(const char *szDatabaseFilePath)
     }
 
     sqlite3_mutex_enter(db_mutex);
-    if (SQLITE_OK != sqlite3_exec(db, "PRAGMA page_size=4096;", 0, 0, NULL))
-    {
-        LOG("Can't set page_size:%s.", sqlite3_errmsg(db));
-        sqlite3_mutex_leave(db_mutex);
-        sqlite3_close(db);
-        return FAILED;
-    }
+    //if (SQLITE_OK != sqlite3_exec(db, "PRAGMA page_size=4096;", 0, 0, NULL))
+    //{
+    //    LOG("Can't set page_size:%s.", sqlite3_errmsg(db));
+    //    sqlite3_mutex_leave(db_mutex);
+    //    sqlite3_close(db);
+    //    return FAILED;
+    //}
 
-    if (SQLITE_OK != sqlite3_exec(db, "PRAGMA cache_size=8000;", 0, 0, NULL))
-    {
-        LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
-        sqlite3_mutex_leave(db_mutex);
-        sqlite3_close(db);
-        return FAILED;
-    }
+    //if (SQLITE_OK != sqlite3_exec(db, "PRAGMA cache_size=8000;", 0, 0, NULL))
+    //{
+    //    LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
+    //    sqlite3_mutex_leave(db_mutex);
+    //    sqlite3_close(db);
+    //    return FAILED;
+    //}
 
     // if blacklist not exists, create it
     char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\

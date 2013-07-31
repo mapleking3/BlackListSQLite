@@ -1,24 +1,48 @@
-APP		:= exe
-CSCRS	:= test.c plate_bw_list.c
-CXXSCRS := 
-COBJS	:= $(CSCRS:.c=.o)
-CXXOBJS := $(CXXSCRS:.cpp=.o)
-OBJS	:= $(COBJS) $(CXXOBJS)
+PREFIX      := arm-wrs-linux-gnueabi-armv6jel_vfp-uclibc_small-
+APP			:= test_sqlite3_8168
+all:		$(APP)
 
-LD_FLAG := -lrt -lsqlite3 -pthread -L. 
-CFLAGS	:= -g -Wall
+CC			:= $(PREFIX)gcc
+CXX			:= $(PREFIX)g++
+AR			:= $(PREFIX)ar
+LD			:= $(PREFIX)ld
 
-LIBS	:= 
+CFLAGS		+= -Wall -W -O2
 
-%.o:%.c 
-	gcc $(CFLAGS) -c $< -o $@
-%.o:%.cpp
-	g++ $(CFLAGS) -c $< -o $@
-$(APP):$(OBJS)
-	g++ $(CFLAGS) $(OBJS) -o $@ $(LD_FLAG)  
+LD_FLAGS	+= -L./lib -lrt -lsqlite3 -ldl -lpthread
 
-.PHONY: clean
+#LD_FLAGS	+= -lpthread -lsqlite3 -lrt
+
+INC_FLAG    += -I./include
+
+APP_ROOT	:= $(shell pwd)
+
+export CC CXX AR LD CFLAGS INC_FLAG LD_FLAGS 
+
+CSRCS		:= test.c plate_bw_list.c
+CXXSRCS		:= 
+
+CXXOBJS		:= $(CXXSRCS:.cpp=.o)
+COBJS		:= $(CSRCS:.c=.o)
+OBJS		:= $(CXXOBJS) $(COBJS)
+
+DEPS		:= $(OBJS:.o=.d)
+
+%.o : %.c
+	$(CC) $(CFLAGS) $(INC_FLAG) -c $< -o $@
+%.d : %.c
+	@set -e;$(CC) $(CFLAGS) $(INC_FLAG) $(CPPFLAGS) -MM $< | sed -e 's/$(basename $@).o/$(basename $@).o $(basename $@).d/' > $@
+%.o : %.cpp
+	$(CXX) $(CFLAGS) $(INC_FLAG) -c $< -o $@
+%.d : %.cpp
+	@set -e;$(CXX) $(CFLAGS) $(INC_FLAG) $(CPPFLAGS) -MM $< | sed -e 's/$(basename $@).o/$(basename $@).o $(basename $@).d/' > $@
+
+.PHONY:	$(APP)
+
+$(APP) : $(OBJS)
+	$(CXX) $(OBJS) -o $@ $(LD_FLAGS)
+
 clean:
-	-@rm -rf $(COBJS) $(APP) test.db
-#-@rm -rf `ls -Itest.c -Itest.h -IMakefile`
+	$(RM) -f $(OBJS) $(DEPS) $(APP) $(MODDEP)
 
+sinclude $(DEPS)

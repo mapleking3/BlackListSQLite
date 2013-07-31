@@ -1,16 +1,19 @@
-APP			:= test
+PREFIX      := 
+APP			:= test_sqlite3_pc
 all:		$(APP)
 
-CC			:= $(shell which gcc)
-CXX			:= $(shell which g++)
-AR			:= $(shell which ar)
-LD			:= $(shell which ld)
+CC			:= $(PREFIX)gcc
+CXX			:= $(PREFIX)g++
+AR			:= $(PREFIX)ar
+LD			:= $(PREFIX)ld
 
 CFLAGS		+= -Wall -W -O2
 
-LD_FLAGS	+= -lpthread -lsqlite3 -lrt
+LD_FLAGS	+= -L./lib -lrt -lsqlite3 -ldl -lpthread
 
-INC_FLAG    += 
+#LD_FLAGS	+= -lpthread -lsqlite3 -lrt
+
+INC_FLAG    += -I./include
 
 APP_ROOT	:= $(shell pwd)
 

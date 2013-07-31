@@ -31,7 +31,11 @@ static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE Plat
 
 int bwl_init_database(const char *szDatabaseFilePath)
 {
-    sqlite3_config(SQLITE_CONFIG_SERIALIZED);
+    if (SQLITE_OK != sqlite3_config(SQLITE_CONFIG_SERIALIZED))
+    {
+        LOG("Config SQLite3 To Serialized Mode Failed!\n");
+        goto ErrReturn;
+    }
 
     if (sqlite3_open(szDatabaseFilePath, &db) != SQLITE_OK)
     {
@@ -51,10 +55,21 @@ int bwl_init_database(const char *szDatabaseFilePath)
         goto ErrReturn;
     }
 
+#define Test
+#ifdef Test
+    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %q\
+            (PlateNumber TEXT NOT NULL, PlateType INTEGER, Comment TEXT);", szBlackListTable);
+    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %q\
+            (PlateNumber TEXT NOT NULL, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
+#else
     char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
     char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %q\
             (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
+#endif
+
+    char *sqlCreateIndex = sqlite3_mprintf("CREATE INDEX IF NOT EXISTS B_index ON %q(PlateNumber)", szBlackListTable); 
+
 
     int rc_bl = sqlite3_exec(db, sSqlCreateBlacklist, 0, 0, NULL);
     int rc_wl = sqlite3_exec(db, sSqlCreateWhitelist, 0, 0, NULL);
@@ -64,6 +79,11 @@ int bwl_init_database(const char *szDatabaseFilePath)
     if (rc_bl != SQLITE_OK || rc_wl != SQLITE_OK)
     {
         LOG("Create BlackList error:%s.", sqlite3_errmsg(db));
+        goto ErrReturn;
+    }
+    if (sqlite3_exec(db, sqlCreateIndex, 0, 0, NULL) != SQLITE_OK)
+    {
+        LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
         goto ErrReturn;
     }
 

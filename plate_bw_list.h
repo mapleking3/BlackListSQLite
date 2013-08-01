@@ -1,6 +1,8 @@
 #ifndef _PLATE_BW_LIST_H_
 #define _PLATE_BW_LIST_H_
 
+#define MAX_PLATE_NUMBER_LENGTH 16
+
 /**@struct  PLATE_TYPE
  *@brief    Author/Data Retton/20130513
  *@brief    plate type based on plate color
@@ -18,7 +20,7 @@ typedef enum {
  */
 typedef struct {
     PLATE_TYPE PlateType;
-    char *szPlateNumber;
+    char szPlateNumber[MAX_PLATE_NUMBER_LENGTH];
     char *szCommentStr;
 } PLATE_RECORD_T;
 
@@ -73,7 +75,7 @@ extern int wl_export(const char *szExportFileName, const char *szRecordSeparator
  *@param    [in]pPlateRecord: pointer to plate record
  *@return   1:in blacklist 0: not in blacklist -1: error 
  */
-extern int bl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
+extern int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
 
 /**@fn      int wl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
  *@brief    query record in whitelist by Plate number or not
@@ -82,7 +84,7 @@ extern int bl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
  *@param    [in]pPlateRecord: pointer to plate record
  *@return   1:in whitelist 0: not in blacklist -1: error 
  */
-extern int wl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
+extern int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
 
 /**@fn      int bl_insert_record(PLATE_RECORD_T *pPlateRecord);
  *@brief    insert a record to blacklist
@@ -106,7 +108,7 @@ extern int wl_insert_record(PLATE_RECORD_T *pPlateRecord);
  *@param    [in]szPlateNumber: plate number
  *@return   -1:success 0:failed
  */
-extern int bl_delete_record_by_plate_number(char *szPlateNumber);
+extern int bl_delete_record_by_plate_number(const char *szPlateNumber);
 
 /**@fn      int bl_delete_record_by_plate_number(char *szPlateNumber)
  *@brief    delete record in blacklist by plate number 
@@ -114,7 +116,7 @@ extern int bl_delete_record_by_plate_number(char *szPlateNumber);
  *@param    [in]szPlateNumber: plate number
  *@return   -1:success 0:failed
  */
-extern int wl_delete_record_by_plate_number(char *szPlateNumber);
+extern int wl_delete_record_by_plate_number(const char *szPlateNumber);
 
 /**@fn      int bl_delete_records_by_plate_type(PLATE_TYPE PlateType)
  *@brief    delete records in blacklist by plate color
@@ -139,7 +141,7 @@ extern int wl_delete_records_by_plate_type(PLATE_TYPE PlateType);
  *@param    [in]szCommentStr: comment string
  *@return   -1:success 0:failed
  */
-extern int bl_modify_record_comment(char *szPlateNumber, char *szCommentStr);
+extern int bl_modify_record_comment(const char *szPlateNumber, const char *szCommentStr);
 
 /**@fn      int wl_modify_record_comment(char *szPlateNumber, char *szCommentStr)
  *@brief    modify record comment by plate number
@@ -148,7 +150,7 @@ extern int bl_modify_record_comment(char *szPlateNumber, char *szCommentStr);
  *@param    [in]szCommentStr: comment string
  *@return   -1:success 0:failed
  */
-extern int wl_modify_record_comment(char *szPlateNumber, char *szCommentStr);
+extern int wl_modify_record_comment(const char *szPlateNumber, const char *szCommentStr);
 
 /**@fn      int bl_clear_records(void)
  *@brief    clear all record in blacklist

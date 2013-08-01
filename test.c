@@ -102,7 +102,7 @@ int linear_search(const char *szImportFileName, const char *szPlateNumber, const
         char c;
         lineno++;
 
-        int i=0;
+        unsigned int i=0;
         for (i = 0; i < strlen(zLine); ++i)
         {
             c = *p;
@@ -117,7 +117,7 @@ int linear_search(const char *szImportFileName, const char *szPlateNumber, const
         p = zLine;
 
         int inQuote = 0;
-        char *sPlate;
+        char *sPlate = NULL;
         for (i = 0; i < strlen(zLine); ++i)
         {
             if (*p == '"')
@@ -162,45 +162,111 @@ int main(int argc, char *argv[])
         return 0;
     }
 
+#if 0
     STATICS_START("IMPORT");
     if (-1 == bl_import(szImportFileName,";"))
     {
         LOG("import blacklist error!");
     }
     STATICS_STOP();
+#endif
 
-    char *szTestPlateNumber = "皖A-bbbbb";
+    const char *PlateStart          = "皖A-aaaaa";
+    const char *PlateQuarter        = "皖A-bbbbb";
+    const char *PlateAHalf          = "皖A-ccccc";
+    const char *PlateThreeQuarter   = "皖A-ddddd";
+    const char *PlateEnd            = "皖A-eeeee";
+    const char *PlateNotIn          = "皖不存在";
 
-    STATICS_START("LINEAR SEARCH");
-    linear_search(szImportFileName, szTestPlateNumber, ";");
-    STATICS_STOP();
-
-    STATICS_START("Query");
-    if (bl_query(szTestPlateNumber, NULL) == 1)
+    while (1)
     {
-        printf("Query get it\n");
+        printf("Split Line^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n");
+        if (bl_query(PlateNotIn, NULL) == 1)
+        {
+            printf("Find %s In\n\n", PlateNotIn);
+        }
+
+        if (bl_query(PlateStart, NULL) == 1)
+        {
+            printf("Find %s In\n\n", PlateStart);
+        }
+
+        if (bl_query(PlateQuarter, NULL) == 1)
+        {
+            printf("Find %s In\n\n", PlateQuarter);
+        }
+
+        if (bl_query(PlateAHalf, NULL) == 1)
+        {
+            printf("Find %s In\n\n", PlateAHalf);
+        }
+
+        if (bl_query(PlateThreeQuarter, NULL) == 1)
+        {
+            printf("Find %s In\n\n", PlateThreeQuarter);
+        }
+
+        if (bl_query(PlateEnd, NULL) == 1)
+        {
+            printf("Find %s In\n\n", PlateEnd);
+        }
+
+#if 0
+        STATICS_START("Query");
+        if (bl_query(PlateNotIn, NULL) == 1)
+        {
+            printf("\n\nFind %s In\n", PlateNotIn);
+        }
+        STATICS_STOP();
+
+        STATICS_START("Query Begin");
+        if (bl_query(PlateStart, NULL) == 1)
+        {
+            printf("\n\nFind %s In\n", PlateStart);
+        }
+        STATICS_STOP();
+
+        STATICS_START("Query Quarter");
+        if (bl_query(PlateQuarter, NULL) == 1)
+        {
+            printf("\n\nFind %s In\n", PlateQuarter);
+        }
+        STATICS_STOP();
+
+        STATICS_START("Query A Half");
+        if (bl_query(PlateAHalf, NULL) == 1)
+        {
+            printf("\n\nFind %s In\n", PlateAHalf);
+        }
+        STATICS_STOP();
+
+        STATICS_START("Query Three Quarter");
+        if (bl_query(PlateThreeQuarter, NULL) == 1)
+        {
+            printf("\n\nFind %s In\n", PlateThreeQuarter);
+        }
+        STATICS_STOP();
+
+        STATICS_START("Query End");
+        if (bl_query(PlateEnd, NULL) == 1)
+        {
+            printf("\n\nFind %s In\n", PlateEnd);
+        }
+        STATICS_STOP();
+#endif
+
+        //sleep(2);
     }
-    STATICS_STOP();
 
-    char *szPlateNumber_v2 = "皖A-vvvvv";
-    STATICS_START("LINEAR SEARCH MID");
-    linear_search(szImportFileName, szPlateNumber_v2, ";");
-    STATICS_STOP();
-
-    STATICS_START("Query");
-    if (bl_query(szPlateNumber_v2, NULL) == 1)
-    {
-        printf("Query get it\n");
-    }
-    STATICS_STOP();
-
+#if 0
     STATICS_START("Delete one record");
-    bl_delete_record_by_plate_number(szTestPlateNumber);
+    bl_delete_record_by_plate_number(PlateStart);
     STATICS_STOP();
 
     STATICS_START("CLEAR");
     bl_clear_records();
     STATICS_STOP();
+#endif
 
     //char *szPlateNumber = "皖A-11111";
 

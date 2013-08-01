@@ -1,5 +1,5 @@
-PREFIX      := arm-wrs-linux-gnueabi-armv6jel_vfp-uclibc_small-
-APP			:= test_sqlite3_8168
+PREFIX      := 
+APP			:= test_sqlite3_vm
 all:		$(APP)
 
 CC			:= $(PREFIX)gcc

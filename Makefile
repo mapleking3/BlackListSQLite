@@ -8,7 +8,7 @@ LD			:= $(shell which ld)
 
 CFLAGS		+= -Wall -W -O2
 
-LD_FLAGS	+= -lpthread -lsqlite3 -lrt
+LD_FLAGS	+= -lpthread -lsqlite3 -lrt -ldl
 
 INC_FLAG    += 
 

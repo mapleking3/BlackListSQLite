@@ -148,28 +148,24 @@ int linear_search(const char *szImportFileName, const char *szPlateNumber, const
 
 int main(int argc, char *argv[])
 {
-    if (argc < 2)
-    {
-        printf("args is too less!\n");
-        return 0;
-    }
-
-    const char *szImportFileName = argv[1];
-
     if (-1 == bwl_init_database("./test.db"))
     {
         LOG("Init error!");
         return 0;
     }
 
-#if 0
-    STATICS_START("IMPORT");
-    if (-1 == bl_import(szImportFileName,";"))
+
+    if (argc >= 2)
     {
-        LOG("import blacklist error!");
+        const char *szImportFileName = argv[1];
+
+        STATICS_START("IMPORT");
+        if (-1 == bl_import(szImportFileName,";"))
+        {
+            LOG("import blacklist error!");
+        }
+        STATICS_STOP();
     }
-    STATICS_STOP();
-#endif
 
     const char *PlateStart          = "皖A-aaaaa";
     const char *PlateQuarter        = "皖A-bbbbb";
@@ -177,6 +173,8 @@ int main(int argc, char *argv[])
     const char *PlateThreeQuarter   = "皖A-ddddd";
     const char *PlateEnd            = "皖A-eeeee";
     const char *PlateNotIn          = "皖不存在";
+
+    int cnt = 0;
 
     while (1)
     {
@@ -256,6 +254,10 @@ int main(int argc, char *argv[])
 #endif
 
         //sleep(2);
+        if (++cnt == 5)
+        {
+            break;
+        }
     }
 
 #if 0

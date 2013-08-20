@@ -39,6 +39,14 @@ typedef struct {
  */
 extern int bwl_init_database(const char *szDatabaseFilePath);
 
+/** 
+ * @fn:     extern int bwl_backup_database(const char *szBackupDBFilePath);
+ * @brief:  backup blacklist and whitelist database
+ * @param:  szBackupDBFilePath
+ * @return: 
+ */
+extern int bwl_backup_database(const char *szBackupDBFilePath);
+
 /**@fn      int bwl_close_database(void)
  *@brief    close database connection and release resouces
  *@brief    Author/Data Retton/20130513

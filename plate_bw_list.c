@@ -17,7 +17,7 @@
 
 #define FAILED  -1
 #define SUCCESS 0
-
+#define BACKUP_PAGECOUNT 10
 #define LOG(format, ...)                                            \
         do {printf("%s in %s Line[%d]:"format"\n",                   \
                 __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);   \
@@ -106,6 +106,65 @@ int bwl_init_database(const char *szDatabaseFilePath)
     sqlite3_mutex_leave(db_mutex);
 
     return SUCCESS;
+}
+
+int bwl_backup_database(const char *szBackupDBFilePath)
+{
+#if SQLITE_VERSION_NUMBER >= 3006011
+    if (NULL == db)
+    {
+        LOG("Blacklist Whitelist Database File Has Been Closed!");
+        return FAILED;
+    }
+
+    sqlite3* pDBBake;
+    sqlite3_backup* pBackup;
+    int rc;
+    rc = sqlite3_open(szBackupDBFilePath, &pDBBake);
+    if (rc != SQLITE_OK)
+    {
+        LOG("Open Backup DB error:%s.", sqlite3_errmsg(pDBBake));
+        sqlite3_close(pDBBake);
+        return FAILED;
+    }
+
+    pBackup = sqlite3_backup_init(pDBBake, "main", db, "main");
+    if (pBackup == 0)
+    {
+        LOG("Backup Init Error:%s.", sqlite3_errmsg(pDBBake));
+        sqlite3_close(pDBBake);
+        return FAILED;
+    }
+
+    do
+    {
+        rc = sqlite3_backup_step(pBackup, BACKUP_PAGECOUNT);
+        if (rc == SQLITE_BUSY || rc == SQLITE_LOCKED)
+        {
+          sqlite3_sleep(250);
+        }
+    }
+    while (rc == SQLITE_OK || rc == SQLITE_BUSY || rc == SQLITE_LOCKED);
+
+    sqlite3_backup_finish(pBackup);
+    if (rc == SQLITE_DONE)
+    {
+        sqlite3_close(pDBBake);
+        return SUCCESS;
+    }
+    else
+    {
+        LOG("Backup Step Error:%s.", sqlite3_errmsg(pDBBake));
+        sqlite3_close(pDBBake);
+        return FAILED;
+    }
+
+#else
+
+    LOG("Backup not supported in this SQLite Version!");
+    return FAILED;
+
+#endif
 }
 
 int bwl_close_database(void)

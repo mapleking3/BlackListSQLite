@@ -13,7 +13,7 @@ static pthread_t tid;
 
 void *thread(void *pArg)
 {
-    pArg = NULL;
+    pArg = pArg;
 
     if (-1 == bl_delete_records_by_plate_type(WHITE))
     {
@@ -31,7 +31,7 @@ void *thread(void *pArg)
 
 
 
-int main(void)
+int main(int argc, const char *argv[])
 {
 
     if (-1 == bwl_init_database("./test.db"))
@@ -59,7 +59,7 @@ int main(void)
 
     PLATE_RECORD_T PlateRecord = {
         .PlateType = BLUE,
-        .szPlateNumber = szPlateNumber,
+        .szPlateNumber = "皖A-11111",
         .szCommentStr = "hello insert",
     };
     PLATE_RECORD_T *pPlateRecord = &PlateRecord;
@@ -72,6 +72,9 @@ int main(void)
     {
         LOG("Insert record success!");
     }
+
+    char tempPlate[] = "皖A-22222";
+    bl_query(tempPlate, NULL);
 
     int ret = bl_query(szPlateNumber, pPlateRecord);
 
@@ -115,6 +118,9 @@ int main(void)
     }
 
     pthread_join(tid, NULL);
+
+    bwl_backup_database("backup.dat");
+    bwl_close_database();
 
     return 0;
 }

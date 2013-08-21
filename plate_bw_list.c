@@ -1,9 +1,9 @@
 /** 
- * @FileName:   plate_bw_list.c
- * @Brief:      plate blacklist and whitelist realized in sqlite3
- * @Author:     Retton
- * @Version:    V1.0
- * @Date:       2013-05-17
+ * @filename:   plate_bw_list.c
+ * @brief:      plate blacklist and whitelist realized in sqlite3
+ * @author:     Retton
+ * @version:    V1.0.0
+ * @date:       2013-05-17
  * Copyright:   2012-2038 Anhui CHAOYUAN Info Technology Co.Ltd
  */
 #include <sqlite3.h>
@@ -34,7 +34,8 @@ static int export(const char *szTableName, const char *szExportFileName, const c
 static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord);
 static int clear_record(const char *szTableName);
-static int modify_record_comment(const char *szTableName, const char *szPlateNumber, const char *szCommentStr);
+static int modify_record_comment_by_plate_number(const char *TableName, const char *PlateNumber, 
+                                                PLATE_TYPE PlateType, const char *szCommentStr);
 static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
 
@@ -169,7 +170,6 @@ int bwl_backup_database(const char *szBackupDBFilePath)
 
 int bwl_close_database(void)
 {
-    sqlite3_mutex_free(db_mutex);
     int ret = sqlite3_close(db);
     if (SQLITE_OK != ret)
     {
@@ -206,12 +206,12 @@ int wl_export(const char *szExportFileName, const char *szRecordSeparator)
     return export(szWhiteListTable, szExportFileName, szRecordSeparator);
 }
 
-int bl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
     return query(szBlackListTable, szPlateNumber, pPlateRecord);
 }
 
-int wl_query(char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
     return query(szWhiteListTable, szPlateNumber, pPlateRecord);
 }
@@ -226,12 +226,12 @@ int wl_insert_record(PLATE_RECORD_T *pPlateRecord)
     return insert_record(szWhiteListTable, pPlateRecord);
 }
 
-int bl_delete_record_by_plate_number(char *szPlateNumber)
+int bl_delete_record_by_plate_number(const char *szPlateNumber)
 {
     return delete_record_by_plate_number(szBlackListTable, szPlateNumber);
 }
 
-int wl_delete_record_by_plate_number(char *szPlateNumber)
+int wl_delete_record_by_plate_number(const char *szPlateNumber)
 {
     return delete_record_by_plate_number(szWhiteListTable, szPlateNumber);
 }
@@ -246,14 +246,14 @@ int wl_delete_records_by_plate_type(PLATE_TYPE ePlateType_t)
     return delete_records_by_plate_type(szWhiteListTable, ePlateType_t);
 }
 
-int bl_modify_record_comment(char *szPlateNumber, char *szCommentStr)
+int bl_modify_record_by_plate_number(const char *szPlateNumber, PLATE_TYPE PlateType, const char *szCommentStr)
 {
-    return modify_record_comment(szBlackListTable, szPlateNumber, szCommentStr);
+    return modify_record_by_plate_number(szBlackListTable, szPlateNumber, PlateType, szCommentStr);
 }
 
-int wl_modify_record_comment(char *szPlateNumber, char *szCommentStr)
+int wl_modify_record_by_plate_number(const char *szPlateNumber, PLATE_TYPE PlateType, const char *szCommentStr)
 {
-    return modify_record_comment(szWhiteListTable, szPlateNumber, szCommentStr);
+    return modify_record_by_plate_number(szWhiteListTable, szPlateNumber, PlateType,  szCommentStr);
 }
 
 int bl_clear_records(void)
@@ -269,7 +269,7 @@ int wl_clear_records(void)
 /* end of extern api */
 
 /* local function */
-static int exec_sql_not_select(char *sql)
+static int exec_sql_not_select(const char *sql)
 {
     sqlite3_mutex_enter(db_mutex);
     int ret = sqlite3_exec(db, sql, 0, 0, NULL);
@@ -339,19 +339,19 @@ static int strlen30(const char *z)
 
 static int import(const char *szTableName, const char *szImportFileName, const char *szRecordSeparator)
 {
-    const char *zFile = szImportFileName; /* The file from which to extract data */
-    const char *zTable = szTableName;     /* Insert data into this table */
-    sqlite3_stmt *pStmt = NULL;     /* A statement */
-    int nCol;                       /* Number of columns in the table */
-    int nByte;                      /* Number of bytes in an SQL string */
-    int i, j;                       /* Loop counters */
-    int nSep;                       /* Number of bytes in p->separator[] */
-    char *zSql;                     /* An SQL statement */
-    char *zLine;                    /* A single line of input from the file */
-    char **azCol;                   /* zLine[] broken up into columns */
-    char *zCommit;                  /* How to commit changes */   
-    FILE *in;                       /* The input file */
-    int lineno = 0;                 /* Line number of input file */
+    const char *zFile = szImportFileName;   /* The file from which to extract data */
+    const char *zTable = szTableName;       /* Insert data into this table */
+    sqlite3_stmt *pStmt = NULL;             /* A statement */
+    int nCol;                               /* Number of columns in the table */
+    int nByte;                              /* Number of bytes in an SQL string */
+    int i, j;                               /* Loop counters */
+    int nSep;                               /* Number of bytes in p->separator[] */
+    char *zSql;                             /* An SQL statement */
+    char *zLine;                            /* A single line of input from the file */
+    char **azCol;                           /* zLine[] broken up into columns */
+    char *zCommit;                          /* How to commit changes */   
+    FILE *in;                               /* The input file */
+    int lineno = 0;                         /* Line number of input file */
     const char *separator = szRecordSeparator;
 
     nSep = strlen30(separator);
@@ -373,10 +373,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     sqlite3_free(zSql);
     if( rc )
     {
-        if (pStmt) 
-        {
-            sqlite3_finalize(pStmt);
-        }
+        sqlite3_finalize(pStmt);
         sqlite3_mutex_leave(db_mutex);
         LOG("Error: %s.", sqlite3_errmsg(db));
         return FAILED;
@@ -411,10 +408,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     if(rc)
     {
         LOG("Error: %s.", sqlite3_errmsg(db));
-        if (pStmt)
-        {
-            sqlite3_finalize(pStmt);
-        }
+        sqlite3_finalize(pStmt);
         sqlite3_mutex_leave(db_mutex);
         return FAILED;
     }
@@ -703,12 +697,9 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
     sqlite3_mutex_enter(db_mutex);
     if (SQLITE_OK != sqlite3_prepare_v2(db, sql_select, -1, &stmt_select, 0))
     {
-        if (NULL != stmt_select)
-        {
-            sqlite3_finalize(stmt_select);
-        }
         LOG("Sqlite3 prepare v2 error:%s", sqlite3_errmsg(db));
         sqlite3_mutex_leave(db_mutex);
+        sqlite3_finalize(stmt_select);
         sqlite3_free(sql_select);
         return FAILED;
     }
@@ -722,7 +713,9 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
 
     if (SQLITE_DONE == ret)
     {
-        printf("%s is not in BlackList.\n", szPlateNumber);
+        LOG("%s is not in BlackList.\n", szPlateNumber);
+        sqlite3_finalize(stmt_select);
+        stmt_select = NULL;
         return 0;
     }
     else if (SQLITE_ROW == ret)
@@ -747,14 +740,18 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
                 }
             }
 
-            pPlateRecord->szPlateNumber = (char *)szPlateNumber;
+            memcpy(pPlateRecord->szPlateNumber, szPlateNumber, MAX_PLATE_NUMBER);
             pPlateRecord->PlateType = iTempPlateType;
-            pPlateRecord->szCommentStr = (char *)sTempCommentStr;
+            memcpy(pPlateRecord->szCommentStr, sTempCommentStr, MAX_COMMENT_LENGTH);
         }
+        sqlite3_finalize(stmt_select);
+        stmt_select = NULL;
         return 1;
     }
     else 
     {
+        sqlite3_finalize(stmt_select);
+        stmt_select = NULL;
         return FAILED;
     }
 }
@@ -783,10 +780,10 @@ static int clear_record(const char *szTableName)
     return ret;
 }
 
-static int modify_record_comment(const char *szTableName, const char *szPlateNumber, const char *szCommentStr)
+static int modify_record_by_plate_number(const char *TableName, const char *PlateNumber, PLATE_TYPE PlateType, const char *CommentStr)
 {
-    char *sql_modify = sqlite3_mprintf("UPDATE %q set Comment=%Q where PlateNumber=%Q;", 
-                                        szTableName, szCommentStr, szPlateNumber);
+    char *sql_modify = sqlite3_mprintf("UPDATE %q set PlateType=%d,Comment=%Q where PlateNumber=%Q;", 
+                                        TableName, PlateType, CommentStr, PlateNumber);
 
     int ret = exec_sql_not_select(sql_modify);
 

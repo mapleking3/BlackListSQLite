@@ -34,10 +34,33 @@ static int export(const char *szTableName, const char *szExportFileName, const c
 static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord);
 static int clear_record(const char *szTableName);
-static int modify_record_comment_by_plate_number(const char *TableName, const char *PlateNumber, 
-                                                PLATE_TYPE PlateType, const char *szCommentStr);
+static int modify_record_by_plate_number(const char *TableName, const char *PlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
 static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
+
+void db_change_hook(void *pArg, int actionMode, const char *dbName, const char *tableName, long long affectRow)
+{
+    pArg = pArg;
+    char action[16] = {0};
+    switch (actionMode)
+    {
+        case SQLITE_INSERT:
+            strcpy(action, "insert");
+            break;
+        case SQLITE_UPDATE:
+            strcpy(action, "modify");
+            break;
+        case SQLITE_DELETE:
+            strcpy(action, "delete");
+            break;
+        default:
+            printf("Unknow Change\n");
+            return;
+    }
+    LOG("%s in %s: %s in %lld\n", tableName, dbName, action, affectRow);
+    return;
+
+}
 
 int bwl_init_database(const char *szDatabaseFilePath)
 {
@@ -53,6 +76,8 @@ int bwl_init_database(const char *szDatabaseFilePath)
         sqlite3_close(db);
         return FAILED;
     }
+
+    //sqlite3_update_hook(db, db_change_hook, NULL);
 
     if (NULL == (db_mutex = sqlite3_db_mutex(db)))
     {
@@ -283,94 +308,103 @@ static int exec_sql_not_select(const char *sql)
     return SUCCESS;
 }
 
-static char *local_getline(char *zPrompt, FILE *in, int csvFlag)
+static char *local_getline(FILE *pFileIn, int csvFlag)
 {
-  char *zLine;
-  int nLine;
-  int n;
-  int inQuote = 0;
+    int nLine = 100;
+    int n = 0;
+    int inQuote = 0;
+    char *zLine = malloc(nLine);
 
-  if( zPrompt && *zPrompt ){
-    printf("%s",zPrompt);
-    fflush(stdout);
-  }
-  nLine = 100;
-  zLine = malloc( nLine );
-  if( zLine==0 ) return SUCCESS;
-  n = 0;
-  while( 1 ){
-    if( n+100>nLine ){
-      nLine = nLine*2 + 100;
-      zLine = realloc(zLine, nLine);
-      if( zLine==0 ) return SUCCESS;
-    }
-    if( fgets(&zLine[n], nLine - n, in)==0 ){
-      if( n==0 ){
-        free(zLine);
+    if(NULL == zLine)
+    {
         return SUCCESS;
-      }
-      zLine[n] = 0;
-      break;
     }
-    while( zLine[n] ){
-      if( zLine[n]=='"' ) inQuote = !inQuote;
-      n++;
+
+    for (;;)
+    {
+        if(n+100 > nLine)
+        {
+            nLine = nLine*2 + 100;
+            zLine = realloc(zLine, nLine);
+            if(0 == zLine) 
+            {
+                return SUCCESS;
+            }
+        }
+
+        if(0 ==  fgets(&zLine[n], nLine - n, pFileIn))
+        {
+            if( n==0 )
+            {
+                free(zLine);
+                return SUCCESS;
+            }
+            zLine[n] = 0;
+            break;
+        }
+
+        while(zLine[n])
+        {
+            if( zLine[n]=='"' ) inQuote = !inQuote;
+            n++;
+        }
+
+        if(n>0 && zLine[n-1]=='\n' && (!inQuote || !csvFlag))
+        {
+            n--;
+            if( n>0 && zLine[n-1]=='\r' ) 
+            {
+                n--;
+            }
+            zLine[n] = 0;
+            break;
+        }
     }
-    if( n>0 && zLine[n-1]=='\n' && (!inQuote || !csvFlag) ){
-      n--;
-      if( n>0 && zLine[n-1]=='\r' ) n--;
-      zLine[n] = 0;
-      break;
-    }
-  }
-  zLine = realloc( zLine, n+1 );
-  return zLine;
+
+    zLine = realloc(zLine, n+1);
+    return zLine;
 }
 
-static int strlen30(const char *z)
+static int strlen30(const char *str)
 {
-    const char *z2 = z;
-    while (*z2) 
+    const char *temp = str;
+    while (*temp) 
     {
-        z2++;
+        temp++;
     }
-    return 0x3fffffff & (int)(z2-z);
+    return 0x3fffffff & (int)(temp-str);
 }
 
 static int import(const char *szTableName, const char *szImportFileName, const char *szRecordSeparator)
 {
-    const char *zFile = szImportFileName;   /* The file from which to extract data */
-    const char *zTable = szTableName;       /* Insert data into this table */
-    sqlite3_stmt *pStmt = NULL;             /* A statement */
-    int nCol;                               /* Number of columns in the table */
-    int nByte;                              /* Number of bytes in an SQL string */
-    int i, j;                               /* Loop counters */
-    int nSep;                               /* Number of bytes in p->separator[] */
-    char *zSql;                             /* An SQL statement */
-    char *zLine;                            /* A single line of input from the file */
-    char **azCol;                           /* zLine[] broken up into columns */
-    char *zCommit;                          /* How to commit changes */   
-    FILE *in;                               /* The input file */
-    int lineno = 0;                         /* Line number of input file */
-    const char *separator = szRecordSeparator;
+    sqlite3_stmt *pStmt = NULL;             
+    int nCol;                               
+    int i, j;                               
+    char *zLine;                            
+    char **azCol;                           
+    char *zCommit;                          
+    FILE *pFileIn;                          
+    int lineno = 0;                         
+    int nSep = strlen30(szRecordSeparator);
 
-    nSep = strlen30(separator);
-    if( nSep==0 )
+    if(0 == nSep)
     {
         LOG("Error: non-null separator required for import.");
         return FAILED;
     }
 
-    zSql = sqlite3_mprintf("SELECT * FROM %s", zTable);
-    if( zSql==0 )
+    char *SqlString = sqlite3_mprintf("SELECT * FROM %s", szTableName);
+    if(NULL == SqlString)
     {
         LOG("Error: out of memory.");
         return FAILED;
     }
-    nByte = strlen30(zSql);
+    int nByte = strlen30(SqlString);
+
     sqlite3_mutex_enter(db_mutex);
-    int rc = sqlite3_prepare(db, zSql, -1, &pStmt, 0);
-    sqlite3_free(zSql);
+    int rc = sqlite3_prepare_v2(db, SqlString, -1, &pStmt, 0);
+    sqlite3_free(SqlString);
+    SqlString = NULL;
     if( rc )
     {
         sqlite3_finalize(pStmt);
@@ -382,29 +416,34 @@ static int import(const char *szTableName, const char *szImportFileName, const c
 
     nCol = sqlite3_column_count(pStmt);
     sqlite3_finalize(pStmt);
-    pStmt = 0;
-    if( nCol==0 ) 
+    pStmt = NULL;
+
+    if(0 == nCol) 
     {
         return SUCCESS; /* no columns, no error */
     }
-    zSql = malloc( nByte + 20 + nCol*2 );
-    if( zSql==0 )
+
+    SqlString = malloc( nByte + 20 + nCol*2 );
+    if(NULL == SqlString)
     {
         LOG("Error: out of memory!.");
         return FAILED;
     }
-    sqlite3_snprintf(nByte+20, zSql, "INSERT INTO %s VALUES(?", zTable);
-    j = strlen30(zSql);
-    for(i=1; i<nCol; i++)
+    sqlite3_snprintf(nByte+20, SqlString, "INSERT INTO %s VALUES(?", szTableName);
+    j = strlen30(SqlString);
+
+    for(i = 1; i < nCol; i++)
     {
-        zSql[j++] = ',';
-        zSql[j++] = '?';
+        SqlString[j++] = ',';
+        SqlString[j++] = '?';
     }
-    zSql[j++] = ')';
-    zSql[j] = 0;
+    SqlString[j++] = ')';
+    SqlString[j] = 0;
+
     sqlite3_mutex_enter(db_mutex);
-    rc = sqlite3_prepare(db, zSql, -1, &pStmt, 0);
-    free(zSql);
+    rc = sqlite3_prepare_v2(db, SqlString, -1, &pStmt, 0);
+    free(SqlString);
+    SqlString = NULL;
     if(rc)
     {
         LOG("Error: %s.", sqlite3_errmsg(db));
@@ -413,10 +452,10 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         return FAILED;
     }
     sqlite3_mutex_leave(db_mutex);
-    in = fopen(zFile, "rb");
-    if( in==0 )
+    pFileIn = fopen(szImportFileName, "rb");
+    if( pFileIn==0 )
     {
-        LOG("Error: cannot open \"%s\".", zFile);
+        LOG("Error: cannot open \"%s\".", szImportFileName);
         sqlite3_finalize(pStmt);
         return FAILED;
     }
@@ -424,7 +463,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     if( azCol==0 )
     {
         LOG("Error: out of memory.");
-        fclose(in);
+        fclose(pFileIn);
         sqlite3_finalize(pStmt);
         return FAILED;
     }
@@ -434,7 +473,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     if (SQLITE_OK != sqlite3_exec(db, "BEGIN IMMEDIATE", 0, 0, 0))
     {
         LOG("BEGIN TRANSACTION Error:%s", sqlite3_errmsg(db));
-        fclose(in);
+        fclose(pFileIn);
         sqlite3_mutex_leave(db_mutex);
         sqlite3_finalize(pStmt);
         return FAILED;
@@ -443,7 +482,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
 
     zCommit = "COMMIT";
 
-    while( (zLine = local_getline(0, in, 1))!=0 )
+    while( (zLine = local_getline(pFileIn, 1))!=0 )
     {
         char *z, c;
         int inQuote = 0;
@@ -460,7 +499,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
             {
                 lineno++;
             }
-            if(!inQuote && c==separator[0] && strncmp(z,separator,nSep)==0)
+            if(!inQuote && c==szRecordSeparator[0] && strncmp(z,szRecordSeparator,nSep)==0)
             {
                 *z = 0;
                 i++;
@@ -475,8 +514,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         *z = 0;
         if( i+1!=nCol )
         {
-            LOG("Error: %s line %d: expected %d columns of data bud found %d.",
-                    zFile, lineno, nCol, i+1);
+            LOG("Error: %s line %d: expected %d columns of data bud found %d.", szImportFileName, lineno, nCol, i+1);
             zCommit = "ROLLBACK";
             free(zLine);
             rc = 1;
@@ -524,7 +562,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     } /* end while */
 
     free(azCol);
-    fclose(in);
+    fclose(pFileIn);
     sqlite3_finalize(pStmt);
     if (sqlite3_exec(db, zCommit, 0, 0, 0) != SQLITE_OK)
     {
@@ -670,21 +708,17 @@ static int export(const char *szTableName, const char *szExportFileName, const c
         }
     }
 
-    if (stmt != NULL)
-    {
-        sqlite3_finalize(stmt);
-        stmt = NULL;
-    }
+    sqlite3_finalize(stmt);
     fclose(fp);
+    stmt = NULL;
+    fp = NULL;
     return SUCCESS;
 
 ErrReturn:
-    if (stmt != NULL)
-    {
-        sqlite3_finalize(stmt);
-        stmt = NULL;
-    }
+    sqlite3_finalize(stmt);
     fclose(fp);
+    stmt = NULL;
+    fp = NULL;
     return FAILED;
 }
 

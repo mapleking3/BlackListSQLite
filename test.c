@@ -6,33 +6,130 @@
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <signal.h>
 #include "plate_bw_list.h"
 #include "common.h"
 
 static pthread_t tid;
 
+static int bRun = 1;
+
+static void signal_handler(int signum)
+{
+        switch (signum) {
+        case SIGCHLD:
+        case SIGABRT:
+        case SIGKILL:
+                break;
+        case SIGINT:
+        case SIGTERM:
+                printf("SetQuit!\n");
+                bRun = 0;
+                break;
+        default:
+                break;
+        }
+}
+
+static void SetSignalHandler(void)
+{
+        struct sigaction sigAction;
+        sigAction.sa_flags = 0;
+        sigemptyset(&sigAction.sa_mask);
+        sigaddset(&sigAction.sa_mask, SIGINT);
+        sigAction.sa_handler = signal_handler;
+
+        sigaction(SIGCHLD, &sigAction, NULL);
+        sigaction(SIGABRT, &sigAction, NULL);
+        sigaction(SIGTERM, &sigAction, NULL);
+        sigaction(SIGKILL, &sigAction, NULL);
+        sigaction(SIGINT, &sigAction, NULL);
+}
+
 void *thread(void *pArg)
 {
     pArg = pArg;
 
-    if (-1 == bl_delete_records_by_plate_type(WHITE))
-    {
-        LOG("delete record by type failed!");
-    }
-    else
-    {
-        LOG("delete record by type success!");
-    }
-    usleep(1000);
-    bl_export("./export.txt", ";");
+    char PlateAtHead[] = "皖A11111";
+    char PlateAtMid[] = "皖A1APS3";
+    char PlateAtTail[] = "皖A1LFLR";
+    int ret = 0;
+    int cnt = 0;
 
+    while (bRun == 1 && cnt++ < 1000000 )
+    {
+        printf("SPLIT####################################\n");
+
+        STATICS_START("SELECT HEAD");
+        ret = bl_query(PlateAtHead, NULL);
+        if (-1 == ret)
+        {
+            printf("Select Error!\n");
+        }
+        else if (0 == ret)
+        {
+        }
+        else if (1 == ret)
+        {
+            printf("Find It\n");
+        }
+        STATICS_STOP();
+
+        STATICS_START("SELECT MIDDLE");
+        ret = bl_query(PlateAtMid, NULL);
+        if (-1 == ret)
+        {
+            printf("Select Error!\n");
+        }
+        else if (0 == ret)
+        {
+        }
+        else if (1 == ret)
+        {
+            printf("Find It\n");
+        }
+        STATICS_STOP();
+
+        STATICS_START("SELECT TAIL");
+        ret = bl_query(PlateAtTail, NULL);
+        if (-1 == ret)
+        {
+            printf("Select Error!\n");
+        }
+        else if (0 == ret)
+        {
+        }
+        else if (1 == ret)
+        {
+            printf("Find It\n");
+        }
+        STATICS_STOP();
+
+        STATICS_START("SELECT UNIN");
+        ret = bl_query("皖R55555", NULL);
+        if (-1 == ret)
+        {
+            printf("Select Error!\n");
+        }
+        else if (0 == ret)
+        {
+        }
+        else if (1 == ret)
+        {
+            printf("Find It\n");
+        }
+        STATICS_STOP();
+
+        //usleep(500000);
+    }
     return NULL;
 }
 
 
 
-int main(int argc, const char *argv[])
+int main(void)
 {
+    SetSignalHandler();
 
     if (-1 == bwl_init_database("./test.db"))
     {
@@ -40,13 +137,16 @@ int main(int argc, const char *argv[])
         return 0;
     }
 
+#if 0
     if (pthread_create(&tid, NULL, thread, NULL) != 0)
     {
         LOG("Create Thread Error:%s",strerror(errno));
         exit(-1);
     }
+#endif
 
-    if (-1 == bl_import("black_list.txt", ";"))
+#if 1
+    if (-1 == bl_import("sPlateList.txt", ";"))
     {
         LOG("import blacklist error!");
     }
@@ -54,72 +154,71 @@ int main(int argc, const char *argv[])
     {
         LOG("Import blackList success!");
     }
+#endif
 
-    char *szPlateNumber = "皖A-11111";
-
+#if 0
     PLATE_RECORD_T PlateRecord = {
         .PlateType = BLUE,
-        .szPlateNumber = "皖A-11111",
+        .szPlateNumber = "皖AE1212",
         .szCommentStr = "hello insert",
     };
     PLATE_RECORD_T *pPlateRecord = &PlateRecord;
     
-    if (-1 == bl_insert_record(pPlateRecord))
-    {
-        LOG("Insert record error!");
-    }
-    else 
-    {
-        LOG("Insert record success!");
-    }
+    int cnt = 0;
 
-    char tempPlate[] = "皖A-22222";
-    bl_query(tempPlate, NULL);
+    while (cnt++ < 100000 && bRun == 1)
+    {
+        STATICS_START("INSERT");
+        if (-1 == bl_insert_record(pPlateRecord))
+        {
+            LOG("Insert record error!");
+        }
+        else 
+        {
+            LOG("Insert record success!");
+        }
+        STATICS_STOP();
 
-    int ret = bl_query(szPlateNumber, pPlateRecord);
 
-    if (ret == 0)
-    {
-        LOG("Plate:%s not found!", szPlateNumber);
-    }
-    else if (ret == 1)
-    {
-        LOG("Plate:%s is in blacklist!", szPlateNumber);
-        LOG("PlateNumber:%s<***>PlateType:%d<***>Comment:%s",
-                pPlateRecord->szPlateNumber,
-                pPlateRecord->PlateType,
-                pPlateRecord->szCommentStr);
-    }
-    else 
-    {
-        LOG("Query error!");
-        return -1;
-    }
 
-    char *szPlateNumber_1 = "皖A-53333";
-    if (-1 == bl_delete_record_by_plate_number(szPlateNumber_1))
-    {
-        LOG("delete record error!");
-    }
-    else 
-    {
-        LOG("delete record success!");
-    }
+        char *szComment = "Modify comment str";
+        STATICS_START("MOD");
+        if (-1 == bl_modify_record_by_plate_number(pPlateRecord->szPlateNumber, BLUE, szComment))
+        {
+            LOG("modify comment failed!");
+        }
+        else
+        {
+            LOG("modify comment success!");
+        }
+        STATICS_STOP();
 
-    char *szPlateNumber_2 = "皖A-43333";
-    char *szComment = "Modify comment str";
-    if (-1 == bl_modify_record_comment(szPlateNumber_2, szComment))
-    {
-        LOG("modify comment failed!");
+        STATICS_START("DEL");
+        if (-1 == bl_delete_record_by_plate_number(pPlateRecord->szPlateNumber))
+        {
+            LOG("delete record error!");
+        }
+        else 
+        {
+            LOG("delete record success!");
+        }
+        STATICS_STOP();
     }
-    else
-    {
-        LOG("modify comment success!");
-    }
+#endif
+    printf("*********************************************\n");
 
     pthread_join(tid, NULL);
 
+#if 0
+    STATICS_START("EXPORT");
+    bl_export("./export.txt", ";");
+    STATICS_STOP();
+
+    STATICS_START("EXPORT");
     bwl_backup_database("backup.dat");
+    STATICS_STOP();
+#endif
+
     bwl_close_database();
 
     return 0;

@@ -137,7 +137,7 @@ int main(void)
         return 0;
     }
 
-#if 0
+#if 1
     if (pthread_create(&tid, NULL, thread, NULL) != 0)
     {
         LOG("Create Thread Error:%s",strerror(errno));
@@ -145,7 +145,7 @@ int main(void)
     }
 #endif
 
-#if 1
+#if 0
     if (-1 == bl_import("sPlateList.txt", ";"))
     {
         LOG("import blacklist error!");

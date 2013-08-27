@@ -21,7 +21,8 @@ typedef enum {
     YELLOW  = 2,
     WHITE   = 3,
     BLACK   = 4,
-    UNKNOW  = 5,
+    GREEN   = 5,
+    UNKNOW  = 6,
 } PLATE_TYPE;
 
 /** 

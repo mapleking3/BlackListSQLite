@@ -7,10 +7,13 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <semaphore.h>
 #include "plate_bw_list.h"
 #include "common.h"
 
 static pthread_t tid;
+
+static sem_t sem_db;
 
 static int bRun = 1;
 
@@ -55,6 +58,8 @@ void *thread(void *pArg)
     char PlateAtTail[] = "皖A1LFLR";
     int ret = 0;
     int cnt = 0;
+
+    sem_wait(&sem_db);
 
     while (bRun == 1 && cnt++ < 1000000 )
     {
@@ -125,11 +130,15 @@ void *thread(void *pArg)
     return NULL;
 }
 
-
-
 int main(void)
 {
     SetSignalHandler();
+
+    if (-1 == sem_init(&sem_db, 0, 0))
+    {
+        LOG("Sem Init Error:%s", strerror(errno));
+        return -1;
+    }
 
     if (-1 == bwl_init_database("./test.db"))
     {
@@ -146,15 +155,17 @@ int main(void)
 #endif
 
 #if 0
-    if (-1 == bl_import("sPlateList.txt", ";"))
+    if (-1 == bl_import("PlateList.txt", ";"))
     {
         LOG("import blacklist error!");
     }
     else 
     {
-        LOG("Import blackList success!");
+        LOG("Import blackList success!\n#####################\n\n");
     }
 #endif
+
+    sem_post(&sem_db);
 
 #if 0
     PLATE_RECORD_T PlateRecord = {

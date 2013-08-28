@@ -77,6 +77,8 @@ int bwl_init_database(const char *szDatabaseFilePath)
         return FAILED;
     }
 
+    sqlite3_busy_timeout(db, 1);
+
     //sqlite3_update_hook(db, db_change_hook, NULL);
 
     if (NULL == (db_mutex = sqlite3_db_mutex(db)))

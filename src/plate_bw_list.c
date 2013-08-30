@@ -12,8 +12,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 #include "plate_bw_list.h"
 
 #define FAILED  -1
@@ -27,16 +30,14 @@
         } while(0)
 
 extern int bRun;
+
 /*local static variables */
 static sqlite3 *db = NULL;
 static sqlite3_mutex *db_mutex = NULL;
+static sem_t query_sem;
+static pthread_t monitor_tid;
 static const char *szBlackListTable = "BlackList";
 static const char *szWhiteListTable = "WhiteList";
-static char PlateBuffer[MAX_PLATE_NUMBER*PLATE_BUFFER_CNT] = {0};
-static pthread_mutex_t cnt_mutex;
-static int PlateCnt = 0;
-static int OverCnt = 0;
-static pthread_t query_tid = -1;
 
 static int import(const char *szTableName, const char *szImportFileName, const char *szRecordSeparator);
 static int export(const char *szTableName, const char *szExportFileName, const char *szRecordSeparator);
@@ -46,7 +47,7 @@ static int clear_record(const char *szTableName);
 static int modify_record_by_plate_number(const char *TableName, const char *PlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
 static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
-static void *query_thread(void *);
+static void *query_monitor(void *);
 
 void db_change_hook(void *pArg, int actionMode, const char *dbName, const char *tableName, long long affectRow)
 {
@@ -70,59 +71,6 @@ void db_change_hook(void *pArg, int actionMode, const char *dbName, const char *
     LOG("%s in %s: %s in %lld\n", tableName, dbName, action, affectRow);
     return;
 
-}
-
-void plate_buffer_init()
-{
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutex_init(&cnt_mutex, &attr);
-    pthread_mutexattr_destroy(&attr);
-    memset(PlateBuffer, 0, MAX_PLATE_NUMBER*PLATE_BUFFER_CNT);
-    PlateCnt = 0;
-    OverCnt = 0;
-}
-
-void plate_buffer_put(const char *PlateNumber)
-{
-    if (PlateCnt < PLATE_BUFFER_CNT)
-    {
-        pthread_mutex_lock(&cnt_mutex);
-        //memcpy(PlateBuffer+PlateCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
-        strncpy(PlateBuffer+PlateCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
-        PlateCnt++;
-        pthread_mutex_unlock(&cnt_mutex);
-    }
-    else if (PlateCnt == PLATE_BUFFER_CNT)
-    {
-        printf("PlateBuffer OverFlow!\n");
-        if (OverCnt == PLATE_BUFFER_CNT)
-        {
-            OverCnt = 0;
-        }
-        pthread_mutex_lock(&cnt_mutex);
-        //memcpy(PlateBuffer+OverCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
-        strncpy(PlateBuffer+OverCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
-        OverCnt++;
-        pthread_mutex_unlock(&cnt_mutex);
-    }
-}
-
-char *plate_buffer_get(void)
-{
-    if (PlateCnt > 0)
-    {
-        pthread_mutex_lock(&cnt_mutex);
-        char *PlateNumber = (char *)(PlateBuffer+(PlateCnt-1)*MAX_PLATE_NUMBER);
-        printf("Plate:%s BufferCnt:%d\n",PlateNumber, PlateCnt);
-        PlateCnt--;
-        pthread_mutex_unlock(&cnt_mutex);
-        return PlateNumber;
-    }
-    else
-    {
-        return NULL;
-    }
 }
 
 int bwl_init_database(const char *szDatabaseFilePath)
@@ -196,10 +144,15 @@ int bwl_init_database(const char *szDatabaseFilePath)
 
     sqlite3_mutex_leave(db_mutex);
 
-    if (0 != pthread_create(&query_tid, NULL, query_thread, NULL))
+    if (0 != sem_init(&query_sem, 0, 0))
     {
-        LOG("%s", strerror(errno));
-        sqlite3_close(db);
+        LOG("Create Query Semaphore Error!\n");
+        return FAILED;
+    }
+
+    if (0 != pthread_create(&monitor_tid, NULL, query_monitor, NULL))
+    {
+        LOG("Create Monitor Query Thread Error!");
         return FAILED;
     }
 
@@ -303,12 +256,9 @@ int wl_export(const char *szExportFileName, const char *szRecordSeparator)
     return export(szWhiteListTable, szExportFileName, szRecordSeparator);
 }
 
-//int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
-int bl_query(const char *szPlateNumber)
+int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
-    plate_buffer_put(szPlateNumber);
-    return 0;
-    //return query(szBlackListTable, szPlateNumber, pPlateRecord);
+    return query(szBlackListTable, szPlateNumber, pPlateRecord);
 }
 
 int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
@@ -797,8 +747,11 @@ ErrReturn:
     return FAILED;
 }
 
+static int isQuery = 0;
 static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
+    isQuery = 1;
+    sem_post(&query_sem);
     sqlite3_stmt *stmt_select = NULL;
     
     char *sql_select = sqlite3_mprintf("SELECT * FROM %q where PlateNumber=%Q;", szTableName, szPlateNumber);
@@ -810,6 +763,8 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         sqlite3_mutex_leave(db_mutex);
         sqlite3_finalize(stmt_select);
         sqlite3_free(sql_select);
+        sem_post(&query_sem);
+        isQuery = 0;
         return FAILED;
     }
     sqlite3_mutex_leave(db_mutex);
@@ -825,6 +780,8 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         LOG("%s is not in BlackList.\n", szPlateNumber);
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
+        sem_post(&query_sem);
+        isQuery = 0;
         return 0;
     }
     else if (SQLITE_ROW == ret)
@@ -855,17 +812,21 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         }
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
+        sem_post(&query_sem);
+        isQuery = 0;
         return 1;
     }
     else if (SQLITE_INTERRUPT == ret)
     {
         LOG("SQLITE_INTERRUPT Query!");
+        isQuery = 0;
         return FAILED;
     }
     else 
     {
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
+        isQuery = 0;
         return FAILED;
     }
 }
@@ -930,38 +891,54 @@ static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE Plat
     return ret;
 }
 
-void *query_thread(void *pArg)
+void *query_monitor(void *pArg)
 {
     pArg = pArg;
-    int cnt = 0;
-    for (;;)
-    {
-        PLATE_RECORD_T PlateRecord;
-        char *PlateNumber = plate_buffer_get();
-        if (PlateNumber == NULL)
-        {
-            usleep(100);
-            if (bRun == 0)
-            {
-                printf("Query Count:%d\n", cnt);
-                return NULL;
-            }
-            continue;
-        }
-        cnt++;
-        int ret = query(szBlackListTable, PlateNumber, &PlateRecord);
+    struct timeval start;
+    struct timeval end;
 
-        if (ret < 0)
+#if 1
+    while (1 == bRun)
+    {
+        if (0 == sem_wait(&query_sem))
         {
-            LOG("Query Error!");
-        }
-        else if (ret == 0)
-        {
-        }
-        else if (ret == 1)
-        {
-            printf("Find Int\n");
+            gettimeofday(&start, NULL);
+            while(1 == isQuery)
+            {
+                gettimeofday(&end, NULL);
+                long long difftime = (end.tv_sec - start.tv_sec)*1000*1000+
+                                    (end.tv_usec - start.tv_usec);
+                if (difftime > MAX_QUERY_TIME)
+                {
+                    printf("Interrupt!\n");
+                    sqlite3_interrupt(db);
+                }
+                usleep(10);
+            }
         }
     }
+#else
+    while (1 == bRun)
+    {
+        if (0 == sem_wait(&query_sem))
+        {
+            gettimeofday(&start, NULL);
+            struct timespec timeout;
+            timeout.tv_sec = start.tv_sec + MAX_QUERY_TIME / (1000*1000);
+            timeout.tv_nsec = start.tv_usec*1000 + (MAX_QUERY_TIME % (1000*1000))*1000;
+            if (timeout.tv_nsec > 1000000000)
+            {
+                timeout.tv_sec++;
+                timeout.tv_nsec-=1000000000;
+            }
+
+            if (0 != sem_timedwait(&query_sem, &timeout))
+            {
+                printf("Interrupt!\n");
+                sqlite3_interrupt(db);
+            }
+        }
+    }
+#endif
     return NULL;
 }

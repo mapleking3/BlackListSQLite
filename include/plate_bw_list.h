@@ -12,6 +12,9 @@
 #define MAX_PLATE_NUMBER    16
 #define MAX_COMMENT_LENGTH  128
 
+// query timeout unit in microsecond
+#define MAX_QUERY_TIME 2000
+
 /** 
  * @name:   PLATE_TYPE
  * @brief:  plate type differnce in plate color
@@ -94,7 +97,7 @@ extern int bl_export(const char *szExportFileName, const char *szRecordSeparator
  */
 extern int wl_export(const char *szExportFileName, const char *szRecordSeparator);
 
-#if 0
+#if 1
 /** 
  * @fn:     extern int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
  * @brief:  query record whether in blacklist or not by plate number
@@ -103,7 +106,7 @@ extern int wl_export(const char *szExportFileName, const char *szRecordSeparator
  * @return: -1:error 0:not in 1:in 
  */
 extern int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
-#endif
+#else
 
 /** 
  * @fn:     extern int bl_query(const char *szPlateNumber);
@@ -112,6 +115,7 @@ extern int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
  * @return: -1:failed 0:success
  */
 extern int bl_query(const char *szPlateNumber);
+#endif
 
 /** 
  * @fn:     extern int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);

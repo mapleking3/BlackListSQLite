@@ -8,6 +8,7 @@
  */
 #include <sqlite3.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
@@ -18,16 +19,24 @@
 #define FAILED  -1
 #define SUCCESS 0
 #define BACKUP_PAGECOUNT 10
+#define PLATE_BUFFER_CNT 100
+
 #define LOG(format, ...)                                            \
         do {printf("%s in %s Line[%d]:"format"\n",                   \
                 __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);   \
         } while(0)
 
+extern int bRun;
 /*local static variables */
 static sqlite3 *db = NULL;
 static sqlite3_mutex *db_mutex = NULL;
 static const char *szBlackListTable = "BlackList";
 static const char *szWhiteListTable = "WhiteList";
+static char PlateBuffer[MAX_PLATE_NUMBER*PLATE_BUFFER_CNT] = {0};
+static pthread_mutex_t cnt_mutex;
+static int PlateCnt = 0;
+static int OverCnt = 0;
+static pthread_t query_tid = -1;
 
 static int import(const char *szTableName, const char *szImportFileName, const char *szRecordSeparator);
 static int export(const char *szTableName, const char *szExportFileName, const char *szRecordSeparator);
@@ -37,6 +46,7 @@ static int clear_record(const char *szTableName);
 static int modify_record_by_plate_number(const char *TableName, const char *PlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
 static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType);
+static void *query_thread(void *);
 
 void db_change_hook(void *pArg, int actionMode, const char *dbName, const char *tableName, long long affectRow)
 {
@@ -60,6 +70,59 @@ void db_change_hook(void *pArg, int actionMode, const char *dbName, const char *
     LOG("%s in %s: %s in %lld\n", tableName, dbName, action, affectRow);
     return;
 
+}
+
+void plate_buffer_init()
+{
+    pthread_mutexattr_t attr;
+    pthread_mutexattr_init(&attr);
+    pthread_mutex_init(&cnt_mutex, &attr);
+    pthread_mutexattr_destroy(&attr);
+    memset(PlateBuffer, 0, MAX_PLATE_NUMBER*PLATE_BUFFER_CNT);
+    PlateCnt = 0;
+    OverCnt = 0;
+}
+
+void plate_buffer_put(const char *PlateNumber)
+{
+    if (PlateCnt < PLATE_BUFFER_CNT)
+    {
+        pthread_mutex_lock(&cnt_mutex);
+        //memcpy(PlateBuffer+PlateCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
+        strncpy(PlateBuffer+PlateCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
+        PlateCnt++;
+        pthread_mutex_unlock(&cnt_mutex);
+    }
+    else if (PlateCnt == PLATE_BUFFER_CNT)
+    {
+        printf("PlateBuffer OverFlow!\n");
+        if (OverCnt == PLATE_BUFFER_CNT)
+        {
+            OverCnt = 0;
+        }
+        pthread_mutex_lock(&cnt_mutex);
+        //memcpy(PlateBuffer+OverCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
+        strncpy(PlateBuffer+OverCnt*MAX_PLATE_NUMBER, PlateNumber, strlen(PlateNumber)+1);
+        OverCnt++;
+        pthread_mutex_unlock(&cnt_mutex);
+    }
+}
+
+char *plate_buffer_get(void)
+{
+    if (PlateCnt > 0)
+    {
+        pthread_mutex_lock(&cnt_mutex);
+        char *PlateNumber = (char *)(PlateBuffer+(PlateCnt-1)*MAX_PLATE_NUMBER);
+        printf("Plate:%s BufferCnt:%d\n",PlateNumber, PlateCnt);
+        PlateCnt--;
+        pthread_mutex_unlock(&cnt_mutex);
+        return PlateNumber;
+    }
+    else
+    {
+        return NULL;
+    }
 }
 
 int bwl_init_database(const char *szDatabaseFilePath)
@@ -132,6 +195,13 @@ int bwl_init_database(const char *szDatabaseFilePath)
     }
 
     sqlite3_mutex_leave(db_mutex);
+
+    if (0 != pthread_create(&query_tid, NULL, query_thread, NULL))
+    {
+        LOG("%s", strerror(errno));
+        sqlite3_close(db);
+        return FAILED;
+    }
 
     return SUCCESS;
 }
@@ -233,9 +303,12 @@ int wl_export(const char *szExportFileName, const char *szRecordSeparator)
     return export(szWhiteListTable, szExportFileName, szRecordSeparator);
 }
 
-int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+//int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+int bl_query(const char *szPlateNumber)
 {
-    return query(szBlackListTable, szPlateNumber, pPlateRecord);
+    plate_buffer_put(szPlateNumber);
+    return 0;
+    //return query(szBlackListTable, szPlateNumber, pPlateRecord);
 }
 
 int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
@@ -784,6 +857,11 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         stmt_select = NULL;
         return 1;
     }
+    else if (SQLITE_INTERRUPT == ret)
+    {
+        LOG("SQLITE_INTERRUPT Query!");
+        return FAILED;
+    }
     else 
     {
         sqlite3_finalize(stmt_select);
@@ -850,4 +928,40 @@ static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE Plat
     sqlite3_free(sql_delete);
 
     return ret;
+}
+
+void *query_thread(void *pArg)
+{
+    pArg = pArg;
+    int cnt = 0;
+    for (;;)
+    {
+        PLATE_RECORD_T PlateRecord;
+        char *PlateNumber = plate_buffer_get();
+        if (PlateNumber == NULL)
+        {
+            usleep(100);
+            if (bRun == 0)
+            {
+                printf("Query Count:%d\n", cnt);
+                return NULL;
+            }
+            continue;
+        }
+        cnt++;
+        int ret = query(szBlackListTable, PlateNumber, &PlateRecord);
+
+        if (ret < 0)
+        {
+            LOG("Query Error!");
+        }
+        else if (ret == 0)
+        {
+        }
+        else if (ret == 1)
+        {
+            printf("Find Int\n");
+        }
+    }
+    return NULL;
 }

@@ -11,11 +11,7 @@
 #include "plate_bw_list.h"
 #include "common.h"
 
-static pthread_t tid;
-
-static sem_t sem_db;
-
-static int bRun = 1;
+int bRun = 1;
 
 static void signal_handler(int signum)
 {
@@ -49,110 +45,15 @@ static void SetSignalHandler(void)
         sigaction(SIGINT, &sigAction, NULL);
 }
 
-void *thread(void *pArg)
-{
-    pArg = pArg;
-
-    char PlateAtHead[] = "皖A11111";
-    char PlateAtMid[] = "皖A1APS3";
-    char PlateAtTail[] = "皖A1LFLR";
-    int ret = 0;
-    int cnt = 0;
-
-    sem_wait(&sem_db);
-
-    while (bRun == 1 && cnt++ < 1000000 )
-    {
-        printf("SPLIT####################################\n");
-
-        STATICS_START("SELECT HEAD");
-        ret = bl_query(PlateAtHead, NULL);
-        if (-1 == ret)
-        {
-            printf("Select Error!\n");
-        }
-        else if (0 == ret)
-        {
-        }
-        else if (1 == ret)
-        {
-            printf("Find It\n");
-        }
-        STATICS_STOP();
-
-        STATICS_START("SELECT MIDDLE");
-        ret = bl_query(PlateAtMid, NULL);
-        if (-1 == ret)
-        {
-            printf("Select Error!\n");
-        }
-        else if (0 == ret)
-        {
-        }
-        else if (1 == ret)
-        {
-            printf("Find It\n");
-        }
-        STATICS_STOP();
-
-        STATICS_START("SELECT TAIL");
-        ret = bl_query(PlateAtTail, NULL);
-        if (-1 == ret)
-        {
-            printf("Select Error!\n");
-        }
-        else if (0 == ret)
-        {
-        }
-        else if (1 == ret)
-        {
-            printf("Find It\n");
-        }
-        STATICS_STOP();
-
-        STATICS_START("SELECT UNIN");
-        ret = bl_query("皖R55555", NULL);
-        if (-1 == ret)
-        {
-            printf("Select Error!\n");
-        }
-        else if (0 == ret)
-        {
-        }
-        else if (1 == ret)
-        {
-            printf("Find It\n");
-        }
-        STATICS_STOP();
-
-        //usleep(500000);
-    }
-    return NULL;
-}
-
 int main(void)
 {
     SetSignalHandler();
-
-    if (-1 == sem_init(&sem_db, 0, 0))
-    {
-        LOG("Sem Init Error:%s", strerror(errno));
-        return -1;
-    }
 
     if (-1 == bwl_init_database("./test.db"))
     {
         LOG("Init error!");
         return 0;
     }
-
-#if 1
-    if (pthread_create(&tid, NULL, thread, NULL) != 0)
-    {
-        LOG("Create Thread Error:%s",strerror(errno));
-        exit(-1);
-    }
-#endif
 
 #if 0
     if (-1 == bl_import("PlateList.txt", ";"))
@@ -165,7 +66,23 @@ int main(void)
     }
 #endif
 
-    sem_post(&sem_db);
+#if 1
+    //char PlateAtHead[] = "皖A11111";
+    char PlateAtMid[] = "皖A1APS3";
+    //char PlateAtTail[] = "皖A1LFLR";
+    int cnt = 0;
+
+    while (bRun == 1 && cnt++ < 100000 )
+    {
+        STATICS_START("QUERY");
+        bl_query(PlateAtMid);
+        usleep(50);
+        STATICS_STOP();
+    }
+    fprintf(stderr, "Query Over!!!!!!!!!!!!!!!!!!!!!!!!!\n");
+    bRun = 0;
+#endif
+
 
 #if 0
     PLATE_RECORD_T PlateRecord = {
@@ -216,10 +133,6 @@ int main(void)
         STATICS_STOP();
     }
 #endif
-    printf("*********************************************\n");
-
-    pthread_join(tid, NULL);
-
 #if 0
     STATICS_START("EXPORT");
     bl_export("./export.txt", ";");
@@ -231,6 +144,7 @@ int main(void)
 #endif
 
     bwl_close_database();
+    printf("*********************************************\n");
 
     return 0;
 }

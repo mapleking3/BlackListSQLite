@@ -18,12 +18,11 @@
 #define STATICS_STOP()                                  \
         }                                               \
         gettimeofday(&end, NULL);                       \
-        printf("%s : %ld ms\n", statics_name,            \
-               (end.tv_sec  - start.tv_sec)  * 1000 +   \
-               (end.tv_usec - start.tv_usec) / 1000);   \
-        printf("%s : %ld us\n", statics_name,            \
-                (end.tv_sec - start.tv_sec) * 1000 * 1000 + \
-                (end.tv_usec - start.tv_usec));          \
+        printf("%s : ms[ %ld ] or  us[ %ld ]\n", statics_name,  \
+               (end.tv_sec  - start.tv_sec)  * 1000 +                   \
+               (end.tv_usec - start.tv_usec) / 1000,                    \
+                (end.tv_sec - start.tv_sec) * 1000 * 1000 +             \
+                (end.tv_usec - start.tv_usec));                         \
         }
 
 

@@ -9,7 +9,7 @@
 #ifndef _PLATE_BW_LIST_H_
 #define _PLATE_BW_LIST_H_
 
-#define MAX_PLATE_NUMBER    32
+#define MAX_PLATE_NUMBER    16
 #define MAX_COMMENT_LENGTH  128
 
 /** 
@@ -94,6 +94,7 @@ extern int bl_export(const char *szExportFileName, const char *szRecordSeparator
  */
 extern int wl_export(const char *szExportFileName, const char *szRecordSeparator);
 
+#if 0
 /** 
  * @fn:     extern int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
  * @brief:  query record whether in blacklist or not by plate number
@@ -102,6 +103,15 @@ extern int wl_export(const char *szExportFileName, const char *szRecordSeparator
  * @return: -1:error 0:not in 1:in 
  */
 extern int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);
+#endif
+
+/** 
+ * @fn:     extern int bl_query(const char *szPlateNumber);
+ * @brief:  put recognized plate number to plate buffer
+ * @param:  szPlateNumber: plate number
+ * @return: -1:failed 0:success
+ */
+extern int bl_query(const char *szPlateNumber);
 
 /** 
  * @fn:     extern int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord);

@@ -73,6 +73,16 @@ void db_change_hook(void *pArg, int actionMode, const char *dbName, const char *
 
 }
 
+static struct timeval start;
+int xProgress(void *pArg)
+{
+    pArg = pArg;
+    struct timeval curr;
+    gettimeofday(&curr, NULL);
+    long long difftime = (curr.tv_sec - start.tv_sec)*1000*1000+ (curr.tv_usec - start.tv_usec);
+    return difftime > MAX_QUERY_TIME ? -1 : 0;
+}
+
 int bwl_init_database(const char *szDatabaseFilePath)
 {
     if (SQLITE_OK != sqlite3_config(SQLITE_CONFIG_SERIALIZED))
@@ -142,6 +152,8 @@ int bwl_init_database(const char *szDatabaseFilePath)
         return FAILED;
     }
 
+    sqlite3_progress_handler(db, 1, xProgress, NULL);
+
     sqlite3_mutex_leave(db_mutex);
 
     if (0 != sem_init(&query_sem, 0, 0))
@@ -150,11 +162,13 @@ int bwl_init_database(const char *szDatabaseFilePath)
         return FAILED;
     }
 
+#if 0
     if (0 != pthread_create(&monitor_tid, NULL, query_monitor, NULL))
     {
         LOG("Create Monitor Query Thread Error!");
         return FAILED;
     }
+#endif
 
     return SUCCESS;
 }
@@ -750,6 +764,7 @@ ErrReturn:
 static int isQuery = 0;
 static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
+    gettimeofday(&start, NULL);
     isQuery = 1;
     sem_post(&query_sem);
     sqlite3_stmt *stmt_select = NULL;
@@ -763,7 +778,6 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         sqlite3_mutex_leave(db_mutex);
         sqlite3_finalize(stmt_select);
         sqlite3_free(sql_select);
-        sem_post(&query_sem);
         isQuery = 0;
         return FAILED;
     }
@@ -780,7 +794,6 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         LOG("%s is not in BlackList.\n", szPlateNumber);
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
-        sem_post(&query_sem);
         isQuery = 0;
         return 0;
     }
@@ -812,7 +825,6 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         }
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
-        sem_post(&query_sem);
         isQuery = 0;
         return 1;
     }
@@ -897,7 +909,6 @@ void *query_monitor(void *pArg)
     struct timeval start;
     struct timeval end;
 
-#if 1
     while (1 == bRun)
     {
         if (0 == sem_wait(&query_sem))
@@ -906,39 +917,16 @@ void *query_monitor(void *pArg)
             while(1 == isQuery)
             {
                 gettimeofday(&end, NULL);
-                long long difftime = (end.tv_sec - start.tv_sec)*1000*1000+
-                                    (end.tv_usec - start.tv_usec);
+                long long difftime = (end.tv_sec - start.tv_sec)*1000*1000+ (end.tv_usec - start.tv_usec);
                 if (difftime > MAX_QUERY_TIME)
                 {
                     printf("Interrupt!\n");
                     sqlite3_interrupt(db);
+                    break;
                 }
-                usleep(10);
             }
         }
+        usleep(20);
     }
-#else
-    while (1 == bRun)
-    {
-        if (0 == sem_wait(&query_sem))
-        {
-            gettimeofday(&start, NULL);
-            struct timespec timeout;
-            timeout.tv_sec = start.tv_sec + MAX_QUERY_TIME / (1000*1000);
-            timeout.tv_nsec = start.tv_usec*1000 + (MAX_QUERY_TIME % (1000*1000))*1000;
-            if (timeout.tv_nsec > 1000000000)
-            {
-                timeout.tv_sec++;
-                timeout.tv_nsec-=1000000000;
-            }
-
-            if (0 != sem_timedwait(&query_sem, &timeout))
-            {
-                printf("Interrupt!\n");
-                sqlite3_interrupt(db);
-            }
-        }
-    }
-#endif
     return NULL;
 }

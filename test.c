@@ -15,34 +15,38 @@ int bRun = 1;
 
 static void signal_handler(int signum)
 {
-        switch (signum) {
-        case SIGCHLD:
-        case SIGABRT:
-        case SIGKILL:
-                break;
-        case SIGINT:
-        case SIGTERM:
-                printf("SetQuit!\n");
-                bRun = 0;
-                break;
-        default:
-                break;
-        }
+    switch (signum) {
+    case SIGCHLD:
+    case SIGABRT:
+    case SIGKILL:
+            break;
+    case SIGINT:
+    case SIGTERM:
+            printf("SetQuit!\n");
+            bRun = 0;
+            break;
+    default:
+            break;
+    }
+
+    return;
 }
 
 static void SetSignalHandler(void)
 {
-        struct sigaction sigAction;
-        sigAction.sa_flags = 0;
-        sigemptyset(&sigAction.sa_mask);
-        sigaddset(&sigAction.sa_mask, SIGINT);
-        sigAction.sa_handler = signal_handler;
+    struct sigaction sigAction;
+    sigAction.sa_flags = 0;
+    sigemptyset(&sigAction.sa_mask);
+    sigaddset(&sigAction.sa_mask, SIGINT);
+    sigAction.sa_handler = signal_handler;
 
-        sigaction(SIGCHLD, &sigAction, NULL);
-        sigaction(SIGABRT, &sigAction, NULL);
-        sigaction(SIGTERM, &sigAction, NULL);
-        sigaction(SIGKILL, &sigAction, NULL);
-        sigaction(SIGINT, &sigAction, NULL);
+    sigaction(SIGCHLD, &sigAction, NULL);
+    sigaction(SIGABRT, &sigAction, NULL);
+    sigaction(SIGTERM, &sigAction, NULL);
+    sigaction(SIGKILL, &sigAction, NULL);
+    sigaction(SIGINT, &sigAction, NULL);
+
+    return;
 }
 
 int main(void)
@@ -66,7 +70,7 @@ int main(void)
     }
 #endif
 
-#if 1
+#if 0
     //char PlateAtHead[] = "皖A11111";
     char PlateAtMid[] = "皖A1APS3";
     //char PlateAtTail[] = "皖A1LFLR";
@@ -133,14 +137,14 @@ int main(void)
         STATICS_STOP();
     }
 #endif
-#if 0
+#if 1
     STATICS_START("EXPORT");
     bl_export("./export.txt", ";");
     STATICS_STOP();
 
-    STATICS_START("EXPORT");
-    bwl_backup_database("backup.dat");
-    STATICS_STOP();
+    //STATICS_START("EXPORT");
+    //bwl_backup_database("backup.dat");
+    //STATICS_STOP();
 #endif
 
     bwl_close_database();

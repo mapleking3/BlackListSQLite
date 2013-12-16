@@ -1,4 +1,4 @@
-/** 
+/**
  * @filename:   plate_bw_list.c
  * @brief:      plate blacklist and whitelist realized in sqlite3
  * @author:     Retton
@@ -16,8 +16,6 @@
 #include <string.h>
 #include "plate_bw_list.h"
 
-#define FAILED  -1
-#define SUCCESS 0
 #define BACKUP_PAGECOUNT 10
 #define PLATE_BUFFER_CNT 100
 
@@ -130,14 +128,14 @@ int bwl_init_database(const char *szDatabaseFilePath)
     if (SQLITE_OK != sqlite3_config(SQLITE_CONFIG_SERIALIZED))
     {
         LOG("Configure Sqlite3 error:%s.", sqlite3_errmsg(db));
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     if (SQLITE_OK != sqlite3_open(szDatabaseFilePath, &db))
     {
         LOG("Can't open database:%s.", sqlite3_errmsg(db));
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     sqlite3_busy_timeout(db, 1);
@@ -148,7 +146,7 @@ int bwl_init_database(const char *szDatabaseFilePath)
     {
         LOG("SQLITE IS NOT IN SERIALIZED MOD");
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     sqlite3_mutex_enter(db_mutex);
@@ -157,7 +155,7 @@ int bwl_init_database(const char *szDatabaseFilePath)
         LOG("Can't set page_size:%s.", sqlite3_errmsg(db));
         sqlite3_mutex_leave(db_mutex);
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     if (SQLITE_OK != sqlite3_exec(db, "PRAGMA cache_size=8000;", 0, 0, NULL))
@@ -165,12 +163,12 @@ int bwl_init_database(const char *szDatabaseFilePath)
         LOG("Can't set cache_size:%s.", sqlite3_errmsg(db));
         sqlite3_mutex_leave(db_mutex);
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     // if blacklist not exists, create it
-    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
-            (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
+    char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q"
+            "(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szBlackListTable);
     int rc_bl = sqlite3_exec(db, sSqlCreateBlacklist, 0, 0, NULL);
     sqlite3_free(sSqlCreateBlacklist);
     if (SQLITE_OK != rc_bl)
@@ -178,12 +176,12 @@ int bwl_init_database(const char *szDatabaseFilePath)
         LOG("Create BlackList Error:%s", sqlite3_errmsg(db));
         sqlite3_mutex_leave(db_mutex);
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     // if whitelist not exists, create it
-    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q\
-            (PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
+    char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q"
+            "(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER, Comment TEXT);", szWhiteListTable);
     int rc_wl = sqlite3_exec(db, sSqlCreateWhitelist, 0, 0, NULL);
     sqlite3_free(sSqlCreateWhitelist);
     if (SQLITE_OK != rc_wl)
@@ -191,7 +189,7 @@ int bwl_init_database(const char *szDatabaseFilePath)
         LOG("Create WhiteList error:%s.", sqlite3_errmsg(db));
         sqlite3_mutex_leave(db_mutex);
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     sqlite3_mutex_leave(db_mutex);
@@ -200,10 +198,10 @@ int bwl_init_database(const char *szDatabaseFilePath)
     {
         LOG("%s", strerror(errno));
         sqlite3_close(db);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
-    return SUCCESS;
+    return BWLIST_OK;
 }
 
 int bwl_backup_database(const char *szBackupDBFilePath)
@@ -212,7 +210,7 @@ int bwl_backup_database(const char *szBackupDBFilePath)
     if (NULL == db)
     {
         LOG("Blacklist Whitelist Database File Has Been Closed!");
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     sqlite3* pDBBake;
@@ -223,7 +221,7 @@ int bwl_backup_database(const char *szBackupDBFilePath)
     {
         LOG("Open Backup DB error:%s.", sqlite3_errmsg(pDBBake));
         sqlite3_close(pDBBake);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     pBackup = sqlite3_backup_init(pDBBake, "main", db, "main");
@@ -231,7 +229,7 @@ int bwl_backup_database(const char *szBackupDBFilePath)
     {
         LOG("Backup Init Error:%s.", sqlite3_errmsg(pDBBake));
         sqlite3_close(pDBBake);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     do
@@ -248,19 +246,19 @@ int bwl_backup_database(const char *szBackupDBFilePath)
     if (rc == SQLITE_DONE)
     {
         sqlite3_close(pDBBake);
-        return SUCCESS;
+        return BWLIST_OK;
     }
     else
     {
         LOG("Backup Step Error:%s.", sqlite3_errmsg(pDBBake));
         sqlite3_close(pDBBake);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
 #else
 
     LOG("Backup not supported in this SQLite Version!");
-    return FAILED;
+    return BWLIST_ERROR;
 
 #endif
 }
@@ -274,11 +272,11 @@ int bwl_close_database(void)
         {
             LOG("unfinalized prepared statements or unfinished sqlite3_backup objects");
         }
-        return FAILED;
+        return BWLIST_ERROR;
     }
-    else 
+    else
     {
-        return SUCCESS;
+        return BWLIST_OK;
     }
 }
 
@@ -303,13 +301,18 @@ int wl_export(const char *szExportFileName, const char *szRecordSeparator)
     return export(szWhiteListTable, szExportFileName, szRecordSeparator);
 }
 
-//int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+#if 0
+int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+{
+    return query(szBlackListTable, szPlateNumber, pPlateRecord); 
+}
+#else
 int bl_query(const char *szPlateNumber)
 {
     plate_buffer_put(szPlateNumber);
     return 0;
-    //return query(szBlackListTable, szPlateNumber, pPlateRecord);
 }
+#endif
 
 int wl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
@@ -377,10 +380,10 @@ static int exec_sql_not_select(const char *sql)
     {
         LOG("exec sql error:%s", sqlite3_errmsg(db));
         sqlite3_mutex_leave(db_mutex);
-        return FAILED;
+        return BWLIST_ERROR;
     }
     sqlite3_mutex_leave(db_mutex);
-    return SUCCESS;
+    return BWLIST_OK;
 }
 
 static char *local_getline(FILE *pFileIn, int csvFlag)
@@ -392,7 +395,7 @@ static char *local_getline(FILE *pFileIn, int csvFlag)
 
     if(NULL == zLine)
     {
-        return SUCCESS;
+        return BWLIST_OK;
     }
 
     for (;;)
@@ -401,9 +404,9 @@ static char *local_getline(FILE *pFileIn, int csvFlag)
         {
             nLine = nLine*2 + 100;
             zLine = realloc(zLine, nLine);
-            if(0 == zLine) 
+            if(0 == zLine)
             {
-                return SUCCESS;
+                return BWLIST_OK;
             }
         }
 
@@ -412,7 +415,7 @@ static char *local_getline(FILE *pFileIn, int csvFlag)
             if( n==0 )
             {
                 free(zLine);
-                return SUCCESS;
+                return BWLIST_OK;
             }
             zLine[n] = 0;
             break;
@@ -427,7 +430,7 @@ static char *local_getline(FILE *pFileIn, int csvFlag)
         if(n>0 && zLine[n-1]=='\n' && (!inQuote || !csvFlag))
         {
             n--;
-            if( n>0 && zLine[n-1]=='\r' ) 
+            if( n>0 && zLine[n-1]=='\r' )
             {
                 n--;
             }
@@ -443,7 +446,7 @@ static char *local_getline(FILE *pFileIn, int csvFlag)
 static int strlen30(const char *str)
 {
     const char *temp = str;
-    while (*temp) 
+    while (*temp)
     {
         temp++;
     }
@@ -452,27 +455,27 @@ static int strlen30(const char *str)
 
 static int import(const char *szTableName, const char *szImportFileName, const char *szRecordSeparator)
 {
-    sqlite3_stmt *pStmt = NULL;             
-    int nCol;                               
-    int i, j;                               
-    char *zLine;                            
-    char **azCol;                           
-    char *zCommit;                          
-    FILE *pFileIn;                          
-    int lineno = 0;                         
+    sqlite3_stmt *pStmt = NULL;
+    int nCol;
+    int i, j;
+    char *zLine;
+    char **azCol;
+    char *zCommit;
+    FILE *pFileIn;
+    int lineno = 0;
     int nSep = strlen30(szRecordSeparator);
 
     if(0 == nSep)
     {
         LOG("Error: non-null separator required for import.");
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     char *SqlString = sqlite3_mprintf("SELECT * FROM %s", szTableName);
     if(NULL == SqlString)
     {
         LOG("Error: out of memory.");
-        return FAILED;
+        return BWLIST_ERROR;
     }
     int nByte = strlen30(SqlString);
 
@@ -485,7 +488,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         sqlite3_finalize(pStmt);
         sqlite3_mutex_leave(db_mutex);
         LOG("Error: %s.", sqlite3_errmsg(db));
-        return FAILED;
+        return BWLIST_ERROR;
     }
     sqlite3_mutex_leave(db_mutex);
 
@@ -493,16 +496,16 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     sqlite3_finalize(pStmt);
     pStmt = NULL;
 
-    if(0 == nCol) 
+    if(0 == nCol)
     {
-        return SUCCESS; /* no columns, no error */
+        return BWLIST_OK; /* no columns, no error */
     }
 
     SqlString = malloc( nByte + 20 + nCol*2 );
     if(NULL == SqlString)
     {
         LOG("Error: out of memory!.");
-        return FAILED;
+        return BWLIST_ERROR;
     }
     sqlite3_snprintf(nByte+20, SqlString, "INSERT INTO %s VALUES(?", szTableName);
     j = strlen30(SqlString);
@@ -524,7 +527,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         LOG("Error: %s.", sqlite3_errmsg(db));
         sqlite3_finalize(pStmt);
         sqlite3_mutex_leave(db_mutex);
-        return FAILED;
+        return BWLIST_ERROR;
     }
     sqlite3_mutex_leave(db_mutex);
     pFileIn = fopen(szImportFileName, "rb");
@@ -532,7 +535,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     {
         LOG("Error: cannot open \"%s\".", szImportFileName);
         sqlite3_finalize(pStmt);
-        return FAILED;
+        return BWLIST_ERROR;
     }
     azCol = malloc(sizeof(azCol[0])*(nCol+1) );
     if( azCol==0 )
@@ -540,7 +543,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         LOG("Error: out of memory.");
         fclose(pFileIn);
         sqlite3_finalize(pStmt);
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     sqlite3_mutex_enter(db_mutex);
@@ -551,7 +554,7 @@ static int import(const char *szTableName, const char *szImportFileName, const c
         fclose(pFileIn);
         sqlite3_mutex_leave(db_mutex);
         sqlite3_finalize(pStmt);
-        return FAILED;
+        return BWLIST_ERROR;
     }
     sqlite3_mutex_leave(db_mutex);
 
@@ -566,11 +569,11 @@ static int import(const char *szTableName, const char *szImportFileName, const c
 
         for(i=0, z=zLine; (c = *z)!=0; z++)
         {
-            if(c=='"') 
+            if(c=='"')
             {
                 inQuote = !inQuote;
             }
-            if(c=='\n') 
+            if(c=='\n')
             {
                 lineno++;
             }
@@ -604,11 +607,11 @@ static int import(const char *szTableName, const char *szImportFileName, const c
                 for(z=azCol[i], j=1, k=0; z[j]; j++)
                 {
                     if( z[j]=='"' )
-                    { 
-                        j++; 
-                        if(z[j]==0) 
+                    {
+                        j++;
+                        if(z[j]==0)
                         {
-                            break; 
+                            break;
                         }
                     }
                     z[k++] = z[j];
@@ -641,15 +644,15 @@ static int import(const char *szTableName, const char *szImportFileName, const c
     sqlite3_finalize(pStmt);
     if (sqlite3_exec(db, zCommit, 0, 0, 0) != SQLITE_OK)
     {
-        return FAILED;
+        return BWLIST_ERROR;
     }
     if (strcmp(zCommit, "COMMIT") == 0)
     {
-        return SUCCESS;
+        return BWLIST_OK;
     }
     else
     {
-        return FAILED;
+        return BWLIST_ERROR;
     }
 }
 
@@ -660,7 +663,7 @@ static int export(const char *szTableName, const char *szExportFileName, const c
     if (NULL == fp)
     {
         LOG("Open export file error:%s", strerror(errno));
-        return FAILED;
+        return BWLIST_ERROR;
     }
 
     char *sql_select = sqlite3_mprintf("SELECT * FROM %q;", szTableName);
@@ -787,20 +790,20 @@ static int export(const char *szTableName, const char *szExportFileName, const c
     fclose(fp);
     stmt = NULL;
     fp = NULL;
-    return SUCCESS;
+    return BWLIST_OK;
 
 ErrReturn:
     sqlite3_finalize(stmt);
     fclose(fp);
     stmt = NULL;
     fp = NULL;
-    return FAILED;
+    return BWLIST_ERROR;
 }
 
 static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
     sqlite3_stmt *stmt_select = NULL;
-    
+
     char *sql_select = sqlite3_mprintf("SELECT * FROM %q where PlateNumber=%Q;", szTableName, szPlateNumber);
 
     sqlite3_mutex_enter(db_mutex);
@@ -810,7 +813,7 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
         sqlite3_mutex_leave(db_mutex);
         sqlite3_finalize(stmt_select);
         sqlite3_free(sql_select);
-        return FAILED;
+        return BWLIST_ERROR;
     }
     sqlite3_mutex_leave(db_mutex);
 
@@ -860,20 +863,20 @@ static int query(const char *szTableName, const char *szPlateNumber, PLATE_RECOR
     else if (SQLITE_INTERRUPT == ret)
     {
         LOG("SQLITE_INTERRUPT Query!");
-        return FAILED;
+        return BWLIST_ERROR;
     }
-    else 
+    else
     {
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
-        return FAILED;
+        return BWLIST_ERROR;
     }
 }
 
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord)
 {
-    char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES(%Q,%d,%Q);", 
-                                        szTableName, pPlateRecord->szPlateNumber, 
+    char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES(%Q,%d,%Q);",
+                                        szTableName, pPlateRecord->szPlateNumber,
                                         pPlateRecord->PlateType, pPlateRecord->szCommentStr);
 
     int ret = exec_sql_not_select(sql_insert);
@@ -896,7 +899,7 @@ static int clear_record(const char *szTableName)
 
 static int modify_record_by_plate_number(const char *TableName, const char *PlateNumber, PLATE_TYPE PlateType, const char *CommentStr)
 {
-    char *sql_modify = sqlite3_mprintf("UPDATE %q set PlateType=%d,Comment=%Q where PlateNumber=%Q;", 
+    char *sql_modify = sqlite3_mprintf("UPDATE %q set PlateType=%d,Comment=%Q where PlateNumber=%Q;",
                                         TableName, PlateType, CommentStr, PlateNumber);
 
     int ret = exec_sql_not_select(sql_modify);
@@ -908,7 +911,7 @@ static int modify_record_by_plate_number(const char *TableName, const char *Plat
 
 static int delete_record_by_plate_number(const char *szTableName, const char *szPlateNumber)
 {
-    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateNumber=%Q;", 
+    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateNumber=%Q;",
                                         szTableName, szPlateNumber);
 
     int ret = exec_sql_not_select(sql_delete);
@@ -920,7 +923,7 @@ static int delete_record_by_plate_number(const char *szTableName, const char *sz
 
 static int delete_records_by_plate_type(const char *szTableName, PLATE_TYPE PlateType)
 {
-    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateType=%d;", 
+    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateType=%d;",
                                         szTableName, PlateType);
 
     int ret = exec_sql_not_select(sql_delete);

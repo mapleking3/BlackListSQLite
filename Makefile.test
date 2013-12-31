@@ -1,0 +1,54 @@
+PREFIX      := arm-wrs-linux-gnueabi-armv6jel_vfp-uclibc_small-
+APP			:= test_sqlite3_pc
+
+all:		$(APP)
+
+CC			:= $(PREFIX)gcc
+CXX			:= $(PREFIX)g++
+AR			:= $(PREFIX)ar
+LD			:= $(PREFIX)ld
+
+CFLAGS		+= -Wall -W -O2
+CFLAGS      += -g
+APP_ROOT	:= $(shell pwd)
+
+LD_FLAGS	+= -L../../libs
+LD_FLAGS	+= -lrt -lsqlite3 -ldl -lpthread
+
+INC_FLAG	+= -I.
+INC_FLAG    += -I../../include
+
+export CC CXX AR LD CFLAGS INC_FLAG LD_FLAGS 
+
+
+CSRCS		:= test.c bwlist.c
+CXXSRCS		:= 
+
+CXXOBJS		:= $(CXXSRCS:.cpp=.o)
+COBJS		:= $(CSRCS:.c=.o)
+OBJS		:= $(CXXOBJS) $(COBJS)
+
+DEPS		:= $(OBJS:.o=.d)
+
+%.o : %.c
+	$(CC) $(CFLAGS) $(INC_FLAG) -c $< -o $@
+%.d : %.c
+	@set -e;$(CC) $(CFLAGS) $(INC_FLAG) $(CPPFLAGS) -MM $< | sed -e 's/$(basename $@).o/$(basename $@).o $(basename $@).d/' > $@
+%.o : %.cpp
+	$(CXX) $(CFLAGS) $(INC_FLAG) -c $< -o $@
+%.d : %.cpp
+	@set -e;$(CXX) $(CFLAGS) $(INC_FLAG) $(CPPFLAGS) -MM $< | sed -e 's/$(basename $@).o/$(basename $@).o $(basename $@).d/' > $@
+
+.PHONY:	$(APP) $(APP_LIB) clean
+
+$(APP) : $(OBJS)
+	$(CXX) $(OBJS) -o $@ $(LD_FLAGS)
+	@mv $(APP) /opt/workdir/mkrootfs/rootfs
+
+clean:
+	$(RM) -f $(OBJS) $(DEPS) $(APP) $(MODDEP)
+
+distclean:
+	$(MAKE) -C src TARGET=$(APP_LIB) clean
+
+sinclude $(DEPS)

@@ -1,5 +1,6 @@
 PREFIX      := arm-wrs-linux-gnueabi-armv6jel_vfp-uclibc_small-
-TARGET      := ../../libs/libbwlist.a
+#TARGET      := ../../libs/libbwlist.a
+TARGET		:= libbwlist.a
 
 CC			:= $(PREFIX)gcc
 CXX			:= $(PREFIX)g++

@@ -73,17 +73,28 @@ static void SetSignalHandler(void)
     return;
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
     SetSignalHandler();
 
-    if (-1 == bwl_init_database("./test.db"))
+    if (argc < 2)
     {
-        LOG("Init error!");
-        return 0;
+        if (-1 == bwl_init_database("./test.db"))
+        {
+            LOG("Init error!");
+            return 0;
+        }
+    }
+    else
+    {
+        if (-1 == bwl_init_database(argv[1]))
+        {
+            LOG("Init error!");
+            return 0;
+        }
     }
 
-#if 0
+#if 1
     if (-1 == bl_import("PlateList.txt", ";"))
     {
         LOG("import blacklist error!");

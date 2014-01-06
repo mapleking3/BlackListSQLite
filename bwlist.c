@@ -18,6 +18,8 @@
 #include <string.h>
 #include <sys/time.h>
 
+#include "iconv.h"
+
 #define BACKUP_PAGECOUNT 10
 #define PLATE_BUFFER_CNT 100
 #define MAX_FILE_NAME   64
@@ -82,6 +84,30 @@ static int delete_records_by_plate_type(const char *szTableName,
         PLATE_TYPE PlateType);
 static void *query_thread(void *);
 
+static int gbk_2_utf8(const char *input,size_t ilen,char *output,size_t olen)  
+{  
+    int iRet = BWLIST_ERROR;
+    char **pin=&input;  
+    char **pout=&output;  
+
+    iconv_t cd = iconv_open("utf-8","gbk");  
+    if(cd == (iconv_t)-1)
+    {  
+        return BWLIST_ERROR;  
+    }  
+    memset(output,0,olen);  
+    if(-1 == iconv(cd,pin,&ilen,pout,&olen))
+    {  
+        iRet = BWLIST_ERROR;
+    }  
+    else
+    {
+        iRet = BWLIST_OK;
+    }
+    iconv_close(cd);  
+    return iRet;  
+}  
+
 void db_change_hook(void *pArg, int actionMode, const char *dbName, 
         const char *tableName, long long affectRow)
 {
@@ -140,6 +166,10 @@ void plate_buffer_put(const char *PlateNumber, const char *JpgName)
         if (JpgName != NULL)
         { 
             memcpy(plateMap[PlateCnt].jpgFile, JpgName, strlen(JpgName) + 1);
+        }
+        else
+        {
+            memset(plateMap[PlateCnt].jpgFile, 0, MAX_FILE_NAME);
         }
         PlateCnt++;
         pthread_mutex_unlock(&cnt_mutex);
@@ -406,8 +436,17 @@ int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 #else
 int bl_query(const char *szPlateNumber, const char *szJpgName)
 {
-    plate_buffer_put(szPlateNumber, szJpgName);
-    return 0;
+    char utf8string[MAX_PLATE_NUMBER] = {0};
+    if (BWLIST_OK == gbk_2_utf8(szPlateNumber, strlen(szPlateNumber), utf8string,
+                MAX_PLATE_NUMBER))
+    { 
+        plate_buffer_put(utf8string, szJpgName);
+        return BWLIST_OK;
+    }
+    else
+    {
+        return BWLIST_ERROR;
+    }
 }
 #endif
 
@@ -1094,7 +1133,7 @@ void *query_thread(void *pArg)
             strncpy(jpgFile, pPlateMap->jpgFile, MAX_FILE_NAME);
             if (s_pf_handle_inspected != NULL)
             { 
-                stor_pic_tag_bw(jpgFile);
+                //stor_pic_tag_bw(jpgFile);
                 s_pf_handle_inspected(&PlateRecord, jpgFile);
             }
         }

@@ -225,4 +225,12 @@ extern int bl_clear_records(void);
  */
 extern int wl_clear_records(void);
 
+/** 
+ * @fn:     extern int get_import_percent(void);
+ * @brief:  get import handle percent
+ * @brief:  Author/Date: retton/2014-01-09
+ * @return: import handle percent
+ */
+extern int get_import_percent(void);
+
 #endif

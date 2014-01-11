@@ -63,6 +63,7 @@ static int PlateCnt = 0;
 static int OverCnt = 0;
 static pthread_t query_tid = -1;
 static pf_handle_inspected s_pf_handle_inspected = NULL;
+static int importPercent = 0;
 
 extern int stor_pic_tag_bw(char *pszFileName);
 
@@ -526,6 +527,18 @@ static int exec_sql_not_select(const char *sql)
     return BWLIST_OK;
 }
 
+static void set_import_percent(int totalLine, int handleLineNum)
+{
+    importPercent = (handleLineNum <= totalLine) 
+        ? (int)((float)handleLineNum/totalLine * 100) : 100;
+    return;
+}
+
+int get_import_percent(void)
+{
+    return importPercent;
+}
+
 static char *local_getline(FILE *pFileIn, int csvFlag)
 {
     int nLine = 100;
@@ -611,6 +624,8 @@ static int import(const char *szTableName, const char *szImportFileName,
     FILE *pFileIn;
     int lineno = 0;
     int nSep = strlen30(szRecordSeparator);
+
+    importPercent = 0;
 
     if(0 == nSep)
     {
@@ -707,6 +722,17 @@ static int import(const char *szTableName, const char *szImportFileName,
 
     zCommit = "COMMIT";
 
+    char buff[1024] = {0};
+    int cnt = 0;
+    int totalLine = 0;
+
+    while (NULL != fgets(buff, 1024, pFileIn))
+    {
+        ++cnt;
+    }
+    
+    totalLine = cnt;
+
     while( (zLine = local_getline(pFileIn, 1))!=0 )
     {
         char *z, c;
@@ -786,6 +812,8 @@ static int import(const char *szTableName, const char *szImportFileName,
             break; /* from while */
         }
         sqlite3_mutex_leave(db_mutex);
+
+        set_import_percent(totalLine, lineno);
     } /* end while */
 
     free(azCol);

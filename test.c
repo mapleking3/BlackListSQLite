@@ -105,6 +105,8 @@ int main(int argc, char *argv[])
     }
 #endif
 
+    sleep(5);
+
 #if 1
     char PlateAtHead[]  = "皖AAAAAA";
     char PlateAtMid[]   = "皖AAKZ26";

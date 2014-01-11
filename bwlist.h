@@ -16,26 +16,53 @@
 #define BWLIST_OK           0
 
 /** 
- * @name:   PLATE_TYPE
+ * @name:   PLATE_COLOR_E
  * @brief:  plate type differnce in plate color
  */
 typedef enum {
-    BLUE    = 1,
-    YELLOW  = 2,
-    WHITE   = 3,
-    BLACK   = 4,
-    GREEN   = 5,
-    UNKNOW  = 6,
-} PLATE_TYPE;
+    EPLATE_BLUE    = 1,
+    EPLATE_YELLOW  = 2,
+    EPLATE_WHITE   = 3,
+    EPLATE_BLACK   = 4,
+    EPLATE_GREEN   = 5,
+    EPLATE_UNKNOW  = 6,
+} PLATE_COLOR_E;
+
+/** 
+ * @name:   SUSPICION_CAR_SRC_E
+ * @brief:  嫌疑车辆来源
+ */
+typedef enum {
+    ENOT_BLIST_DATA = 0,        ///< 非黑名单数据
+    ETEMP_INSPECT_DATA,         ///< 临时布控数据
+    EVEHICLE_ADMIN_OFFICE_DATA, ///< 车管所数据
+    EIILEGAL_TRAFFFICE_DATA,    ///< 交通违法数据
+    EMPS_BLIST_DATA,            ///< 公安部黑名单数据
+    EUNKNOW_SRC_DATA,           ///< 未知来源
+} SUSPICION_CAR_SRC_E;
+
+/** 
+ * @name:   SUSPICION_TYPE_E
+ * @brief:  嫌疑类别
+ */
+typedef enum {
+    EDECK_VEHICLE = 0,          ///< 套牌车辆
+    EOFFENCE_NO_HANDLE,         ///< 违法未处理
+    ESTEAL_OR_ROB_VEHICLE,      ///< 盗抢车辆
+    ENOT_YEARLY_CHECK_VEHICLE,  ///< 超期未年检
+    EHIT_AND_RUN_VEHICLE,       ///< 肇事逃逸车辆
+    EEND_LIFE_VEHICLE,          ///< 报废车辆
+    ESUSPICION_VEHICLE,         ///< 嫌疑车辆
+} SUSPICION_TYPE_E;
 
 /** 
  * @name:   PLATE_RECORD_T
- * @brief:  plate record contain plate color, plate number and comment string
+ * @brief:  车牌记录
  */
 typedef struct {
-    PLATE_TYPE PlateType;
+    PLATE_COLOR_E ePlateColor;
+    SUSPICION_TYPE_E eSuspicionType;
     char szPlateNumber[MAX_PLATE_NUMBER];
-    char szCommentStr[MAX_COMMENT_LENGTH];
 } PLATE_RECORD_T;
 
 /** 
@@ -176,40 +203,46 @@ extern int bl_delete_record_by_plate_number(const char *szPlateNumber);
 extern int wl_delete_record_by_plate_number(const char *szPlateNumber);
 
 /** 
- * @fn:     extern int bl_delete_records_by_plate_type(PLATE_TYPE PlateType);
+ * @fn:     extern int bl_delete_records_by_plate_type(PLATE_COLOR_E ePlateColor);
  * @brief:  delete records in blacklist by plate color
- * @param:  PlateType: plate color type
+ * @param:  ePlateColor: plate color type
  * @return: BWLIST_ERROR:failed BWLIST_OK:success
  */
-extern int bl_delete_records_by_plate_type(PLATE_TYPE PlateType);
+extern int bl_delete_records_by_plate_type(PLATE_COLOR_E PlateType);
 
 /** 
- * @fn:     extern int wl_delete_records_by_plate_type(PLATE_TYPE PlateType);
+ * @fn:     extern int wl_delete_records_by_plate_type(PLATE_COLOR_E ePlateColor);
  * @brief:  delete records in whitelist by plate color
- * @param:  PlateType: plate color type
+ * @param:  ePlateColor: plate color type
  * @return: BWLIST_ERROR:failed BWLIST_OK:success
  */
-extern int wl_delete_records_by_plate_type(PLATE_TYPE PlateType);
+extern int wl_delete_records_by_plate_type(PLATE_COLOR_E ePlateColor);
 
 /** 
- * @fn:     extern int bl_modify_record_by_plate_number(const char *szPlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
+ * @fn:     extern int bl_modify_record_by_plate_number(
+ *              const char *szPlateNumber, PLATE_COLOR_E PlateType, 
+ *              SUSPICION_TYPE_E eSuspicionType);
  * @brief:  modify a record by plate number
  * @param:  szPlateNumber: plate number
  * @param:  PlateType: plate type
- * @param:  szCommentStr: comment string
+ * @param:  eSuspicionType: suspicion type
  * @return: BWLIST_ERROR:failed BWLIST_OK:success
  */
-extern int bl_modify_record_by_plate_number(const char *szPlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
+extern int bl_modify_record_by_plate_number(const char *szPlateNumber, 
+        PLATE_COLOR_E PlateType, SUSPICION_TYPE_E eSuspicionType);
 
 /** 
- * @fn:     extern int wl_modify_record_by_plate_number(const char *szPlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
+ * @fn:     extern int wl_modify_record_by_plate_number(
+ *              const char *szPlateNumber, PLATE_COLOR_E PlateType, 
+ *              SUSPICION_TYPE_E eSuspicionType);
  * @brief:  modify a record by plate number
  * @param:  szPlateNumber: plate number
  * @param:  PlateType: plate type
- * @param:  szCommentStr: comment string
+ * @param:  eSuspicionType: suspicion type
  * @return: BWLIST_ERROR:failed BWLIST_OK:success
  */
-extern int wl_modify_record_by_plate_number(const char *szPlateNumber, PLATE_TYPE PlateType, const char *szCommentStr);
+extern int wl_modify_record_by_plate_number(const char *szPlateNumber, 
+        PLATE_COLOR_E PlateType, SUSPICION_TYPE_E eSuspicionType);
 
 /** 
  * @fn:     extern int bl_clear_records(void);

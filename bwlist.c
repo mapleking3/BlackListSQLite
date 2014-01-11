@@ -77,14 +77,61 @@ static int insert_record(const char *szTableName,
         PLATE_RECORD_T *pPlateRecord);
 static int clear_record(const char *szTableName);
 static int modify_record_by_plate_number(const char *TableName, 
-        const char *PlateNumber, PLATE_TYPE PlateType, 
-        const char *szCommentStr);
+        const char *PlateNumber, PLATE_COLOR_E ePlateColor, 
+        SUSPICION_TYPE_E eSuspicionType);
 static int delete_record_by_plate_number(const char *szTableName, 
         const char *szPlateNumber);
 static int delete_records_by_plate_type(const char *szTableName, 
-        PLATE_TYPE PlateType);
+        PLATE_COLOR_E ePlateColor);
 static void *query_thread(void *);
 
+int is_gbk_code(char* str)
+{
+    unsigned one_byte = 0X00; //binary 00000000
+
+    int gbk_yes = 0;
+    int gbk_no = 0;
+    int i =0;
+    unsigned char k = 0;
+
+    unsigned char c = 0;
+    int len = strlen(str);
+
+    for (i=0; i<len;) 
+    {
+        c = (unsigned char)str[i];
+
+        if (c>>7 == one_byte) 
+        {
+            ++i;
+            continue;
+        } 
+        else if (c >= 0X81 && c <= 0XFE) 
+        {
+            k = (unsigned char)str[i+1];
+            if (k >= 0X40 && k <= 0XFE) 
+            {
+                gbk_yes++;
+                i += 2;
+                continue;
+            }
+        }
+
+        gbk_no++;
+        i += 2;
+    }
+
+    //printf("%d %d\n", gbk_yes, gbk_no);
+    float ret = (float)(100*gbk_yes)/(gbk_yes+gbk_no);
+    if (ret > 90.0) 
+    {
+        return 1;
+    } 
+    else 
+    {
+        return 0;
+    }
+}
 static int gbk_2_utf8(const char *input,size_t ilen,char *output,size_t olen)  
 {  
     int iRet = BWLIST_ERROR;
@@ -290,8 +337,8 @@ int bwl_init_database(const char *szDatabaseFilePath)
 
     // if blacklist not exists, create it
     char *sSqlCreateBlacklist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q"
-            "(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER,"
-            "Comment TEXT);", szBlackListTable);
+            "(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateColor INTEGER,"
+            "SuspicionType INTEGER);", szBlackListTable);
     int rc_bl = sqlite3_exec(db, sSqlCreateBlacklist, 0, 0, NULL);
     sqlite3_free(sSqlCreateBlacklist);
     if (SQLITE_OK != rc_bl)
@@ -304,8 +351,8 @@ int bwl_init_database(const char *szDatabaseFilePath)
 
     // if whitelist not exists, create it
     char *sSqlCreateWhitelist = sqlite3_mprintf("CREATE TABLE IF NOT EXISTS %Q"
-            "(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateType INTEGER,"
-            "Comment TEXT);", szWhiteListTable);
+            "(PlateNumber TEXT NOT NULL PRIMARY KEY, PlateColor INTEGER,"
+            "SuspicionType INTEGER);", szWhiteListTable);
     int rc_wl = sqlite3_exec(db, sSqlCreateWhitelist, 0, 0, NULL);
     sqlite3_free(sSqlCreateWhitelist);
     if (SQLITE_OK != rc_wl)
@@ -437,16 +484,24 @@ int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 #else
 int bl_query(const char *szPlateNumber, const char *szJpgName)
 {
-    char utf8string[MAX_PLATE_NUMBER] = {0};
-    if (BWLIST_OK == gbk_2_utf8(szPlateNumber, strlen(szPlateNumber), utf8string,
-                MAX_PLATE_NUMBER))
-    { 
-        plate_buffer_put(utf8string, szJpgName);
-        return BWLIST_OK;
+    if (is_gbk_code(szPlateNumber))
+    {
+        char utf8string[MAX_PLATE_NUMBER] = {0};
+        if (BWLIST_OK == gbk_2_utf8(szPlateNumber, strlen(szPlateNumber), 
+                    utf8string, MAX_PLATE_NUMBER))
+        { 
+            plate_buffer_put(utf8string, szJpgName);
+            return BWLIST_OK;
+        }
+        else
+        {
+            return BWLIST_ERROR;
+        }
     }
     else
     {
-        return BWLIST_ERROR;
+        plate_buffer_put(szPlateNumber, szJpgName);
+        return BWLIST_OK;
     }
 }
 #endif
@@ -476,28 +531,28 @@ int wl_delete_record_by_plate_number(const char *szPlateNumber)
     return delete_record_by_plate_number(szWhiteListTable, szPlateNumber);
 }
 
-int bl_delete_records_by_plate_type(PLATE_TYPE ePlateType_t)
+int bl_delete_records_by_plate_type(PLATE_COLOR_E ePlateColor)
 {
-    return delete_records_by_plate_type(szBlackListTable, ePlateType_t);
+    return delete_records_by_plate_type(szBlackListTable, ePlateColor);
 }
 
-int wl_delete_records_by_plate_type(PLATE_TYPE ePlateType_t)
+int wl_delete_records_by_plate_type(PLATE_COLOR_E ePlateColor)
 {
-    return delete_records_by_plate_type(szWhiteListTable, ePlateType_t);
+    return delete_records_by_plate_type(szWhiteListTable, ePlateColor);
 }
 
 int bl_modify_record_by_plate_number(const char *szPlateNumber, 
-        PLATE_TYPE PlateType, const char *szCommentStr)
+        PLATE_COLOR_E ePlateColor, SUSPICION_TYPE_E eSuspicionType)
 {
     return modify_record_by_plate_number(szBlackListTable, szPlateNumber, 
-            PlateType, szCommentStr);
+            ePlateColor, eSuspicionType);
 }
 
 int wl_modify_record_by_plate_number(const char *szPlateNumber, 
-        PLATE_TYPE PlateType, const char *szCommentStr)
+        PLATE_COLOR_E ePlateColor, SUSPICION_TYPE_E eSuspicionType)
 {
     return modify_record_by_plate_number(szWhiteListTable, szPlateNumber, 
-            PlateType,  szCommentStr);
+            ePlateColor,  eSuspicionType);
 }
 
 int bl_clear_records(void)
@@ -660,6 +715,7 @@ static int import(const char *szTableName, const char *szImportFileName,
 
     if(0 == nCol)
     {
+        LOG("nCol == 0");
         return BWLIST_OK; /* no columns, no error */
     }
 
@@ -732,6 +788,8 @@ static int import(const char *szTableName, const char *szImportFileName,
     }
     
     totalLine = cnt;
+
+    (void)fseek(pFileIn, 0L, SEEK_SET);
 
     while( (zLine = local_getline(pFileIn, 1))!=0 )
     {
@@ -1018,8 +1076,8 @@ static int query(const char *szTableName, const char *szPlateNumber,
     {
         if (NULL != pPlateRecord)
         {
-            int iTempPlateType = 0;
-            char *sTempCommentStr = 0;
+            int iTmpPlateColor      = 0;
+            int iTmpSuspicionType   = 0;
             int currField;
 
             for (currField = 0; currField < fieldCount; ++currField)
@@ -1027,23 +1085,21 @@ static int query(const char *szTableName, const char *szPlateNumber,
                 const char *szTemp = 
                     sqlite3_column_name(stmt_select, currField);
 
-                if (strcmp(szTemp, "PlateType") == 0)
+                if (strcmp(szTemp, "PlateColor") == 0)
                 {
-                    iTempPlateType = 
+                    iTmpPlateColor = 
                         sqlite3_column_int(stmt_select, currField);
                 }
-                else if (strcmp(szTemp, "Comment") == 0)
+                else if (strcmp(szTemp, "SuspicionType") == 0)
                 {
-                    sTempCommentStr = 
-                        (char *)sqlite3_column_text(stmt_select, currField);
+                    iTmpSuspicionType = sqlite3_column_int(stmt_select, currField);
                 }
             }
 
             memcpy(pPlateRecord->szPlateNumber, szPlateNumber, 
                     MAX_PLATE_NUMBER);
-            pPlateRecord->PlateType = iTempPlateType;
-            memcpy(pPlateRecord->szCommentStr, sTempCommentStr, 
-                    MAX_COMMENT_LENGTH);
+            pPlateRecord->ePlateColor       = iTmpPlateColor;
+            pPlateRecord->eSuspicionType    = iTmpSuspicionType;
         }
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
@@ -1064,9 +1120,9 @@ static int query(const char *szTableName, const char *szPlateNumber,
 
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord)
 {
-    char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES(%Q,%d,%Q);", 
-            szTableName, pPlateRecord->szPlateNumber, pPlateRecord->PlateType, 
-            pPlateRecord->szCommentStr);
+    char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES(%Q,%d,%d);", 
+            szTableName, pPlateRecord->szPlateNumber, pPlateRecord->ePlateColor, 
+            pPlateRecord->eSuspicionType);
 
     int ret = exec_sql_not_select(sql_insert);
 
@@ -1087,11 +1143,12 @@ static int clear_record(const char *szTableName)
 }
 
 static int modify_record_by_plate_number(const char *TableName, 
-        const char *PlateNumber, PLATE_TYPE PlateType, const char *CommentStr)
+        const char *PlateNumber, PLATE_COLOR_E ePlateColor, 
+        SUSPICION_TYPE_E eSuspicionType)
 {
     char *sql_modify = sqlite3_mprintf(
-            "UPDATE %q set PlateType=%d,Comment=%Q where PlateNumber=%Q;", 
-            TableName, PlateType, CommentStr, PlateNumber);
+            "UPDATE %q set PlateType=%d,SuspicionType=%d where PlateNumber=%Q;", 
+            TableName, ePlateColor, eSuspicionType, PlateNumber);
 
     int ret = exec_sql_not_select(sql_modify);
 
@@ -1115,10 +1172,10 @@ static int delete_record_by_plate_number(const char *szTableName,
 }
 
 static int delete_records_by_plate_type(const char *szTableName, 
-        PLATE_TYPE PlateType)
+        PLATE_COLOR_E ePlateColor)
 {
-    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateType=%d;",
-                                        szTableName, PlateType);
+    char *sql_delete = sqlite3_mprintf("DELETE FROM %q where PlateColor=%d;",
+                                        szTableName, ePlateColor);
 
     int ret = exec_sql_not_select(sql_delete);
 

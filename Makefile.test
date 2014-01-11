@@ -1,4 +1,4 @@
-PREFIX      := arm-wrs-linux-gnueabi-armv6jel_vfp-uclibc_small-
+#PREFIX      := arm-wrs-linux-gnueabi-armv6jel_vfp-uclibc_small-
 APP			:= test_sqlite3_pc
 
 all:		$(APP)
@@ -8,11 +8,12 @@ CXX			:= $(PREFIX)g++
 AR			:= $(PREFIX)ar
 LD			:= $(PREFIX)ld
 
-CFLAGS		+= -Wall -W -O2
+CFLAGS		+= -Wall -W# -O2
 CFLAGS      += -g
 APP_ROOT	:= $(shell pwd)
 
 LD_FLAGS	+= -L../../libs
+#LD_FLAGS	+= -lrt -lsqlite3 -ldl -lpthread -liconv
 LD_FLAGS	+= -lrt -lsqlite3 -ldl -lpthread
 
 INC_FLAG	+= -I.

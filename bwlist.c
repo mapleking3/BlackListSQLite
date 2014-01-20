@@ -521,21 +521,21 @@ int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 #else
 int bl_query(const char *szPlateNumber, const char *szJpgName)
 {
-    if (is_gbk_code(szPlateNumber))
-    {
-        char utf8string[MAX_PLATE_NUMBER] = {0};
-        if (BWLIST_OK == gbk_2_utf8(szPlateNumber, strlen(szPlateNumber), 
-                    utf8string, MAX_PLATE_NUMBER))
-        { 
-            plate_buffer_put(utf8string, szJpgName);
-            return BWLIST_OK;
-        }
-        else
-        {
-            return BWLIST_ERROR;
-        }
-    }
-    else
+    //if (is_gbk_code(szPlateNumber))
+    //{
+    //    char utf8string[MAX_PLATE_NUMBER] = {0};
+    //    if (BWLIST_OK == gbk_2_utf8(szPlateNumber, strlen(szPlateNumber), 
+    //                utf8string, MAX_PLATE_NUMBER))
+    //    { 
+    //        plate_buffer_put(utf8string, szJpgName);
+    //        return BWLIST_OK;
+    //    }
+    //    else
+    //    {
+    //        return BWLIST_ERROR;
+    //    }
+    //}
+    //else
     {
         plate_buffer_put(szPlateNumber, szJpgName);
         return BWLIST_OK;
@@ -1256,8 +1256,25 @@ void *query_thread(void *pArg)
         }
         cnt++;
         int ret = 0;
-        STATICS_START(pPlateMap->plate);
-        ret = query(szBlackListTable, pPlateMap->plate, &PlateRecord);
+
+        char utf8_plate[MAX_PLATE_NUMBER] = {0};
+
+        if (is_gbk_code(pPlateMap->plate))
+        {
+            if (BWLIST_OK != gbk_2_utf8(pPlateMap->plate,
+                        strlen(pPlateMap->plate), 
+                        utf8_plate, MAX_PLATE_NUMBER))
+            {
+                continue;
+            }
+        }
+        else
+        {
+            memcpy(utf8_plate, pPlateMap->plate, strlen(pPlateMap->plate)+1);
+        }
+
+        STATICS_START(utf8_plate);
+        ret = query(szBlackListTable, utf8_plate, &PlateRecord);
         STATICS_STOP();
 
         if (ret < 0)
@@ -1271,6 +1288,8 @@ void *query_thread(void *pArg)
         {
             printf("Find Int\n");
             strncpy(jpgFile, pPlateMap->jpgFile, MAX_FILE_NAME); 
+            memcpy(PlateRecord.szPlateNumber, pPlateMap->plate,
+                    strlen(pPlateMap->plate)+1);
             /*
              *stor_pic_tag_bw(jpgFile, &PlateRecord);
              *APP_preview_refresh_suspicioninfo(PlateRecord.szPlateNumber,

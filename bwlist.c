@@ -8,7 +8,6 @@
  */
 #include "bwlist.h"
 
-#include <sqlite3.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -19,6 +18,7 @@
 #include <sys/time.h>
 
 #include "iconv.h"
+#include "sqlite3.h"
 
 #define BACKUP_PAGECOUNT 10
 #define PLATE_BUFFER_CNT 100
@@ -65,7 +65,8 @@ static pthread_t query_tid = -1;
 static pf_handle_inspected s_pf_handle_inspected = NULL;
 static int importPercent = 0;
 
-extern int stor_pic_tag_bw(char *pszFileName);
+extern int stor_pic_tag_bw(char *pszFileName, const PLATE_RECORD_T *pPlateRecord);
+extern void APP_preview_refresh_suspicioninfo(char *szNumber, int iType);
 
 static int import(const char *szTableName, const char *szImportFileName, 
         const char *szRecordSeparator);
@@ -85,7 +86,42 @@ static int delete_records_by_plate_type(const char *szTableName,
         PLATE_COLOR_E ePlateColor);
 static void *query_thread(void *);
 
-int is_gbk_code(char* str)
+/** 
+ * @fn:     static char *plate_conv(char *inPlate)
+ * @brief:  filter chars link '-' ' ' in plate
+ * @brief:  Author/Date: retton/2014-01-11
+ * @note:   inPlate在函数中被修改
+ * @param:  [in/out]inPlate
+ * @return: inPlate
+ */
+static char *plate_conv(char *inPlate)
+{
+    char outPlate[MAX_PLATE_NUMBER] = {0};
+    if (inPlate == NULL || outPlate == NULL)
+    {
+        return NULL;
+    }
+
+    if (strlen(inPlate) > MAX_PLATE_NUMBER)
+    {
+        return NULL;
+    }
+
+    int i, j;
+    for (i = 0, j = 0; i < MAX_PLATE_NUMBER; ++i)
+    {
+        if (inPlate[i] != ' ' && inPlate[i] != '-')
+        {
+            outPlate[j++] = inPlate[i];
+        }
+    }
+
+    memcpy(inPlate, outPlate, MAX_PLATE_NUMBER);
+
+    return inPlate;
+}
+
+static int is_gbk_code(const char* str)
 {
     unsigned one_byte = 0X00; //binary 00000000
 
@@ -132,6 +168,7 @@ int is_gbk_code(char* str)
         return 0;
     }
 }
+
 static int gbk_2_utf8(const char *input,size_t ilen,char *output,size_t olen)  
 {  
     int iRet = BWLIST_ERROR;
@@ -594,6 +631,20 @@ int get_import_percent(void)
     return importPercent;
 }
 
+static void import_line_hook(char *zLine)
+{
+    zLine = zLine;
+    //TODO: 转换gb2312为utf-8
+    //TODO: 车牌号过滤掉空格和"-"
+}
+
+static void import_column_hook(int nCol, char *zCol)
+{
+    nCol = nCol;
+    zCol = zCol;
+    //TODO: 导入列处理
+}
+
 static char *local_getline(FILE *pFileIn, int csvFlag)
 {
     int nLine = 100;
@@ -648,6 +699,7 @@ static char *local_getline(FILE *pFileIn, int csvFlag)
     }
 
     zLine = realloc(zLine, n+1);
+    import_line_hook(zLine);
     return zLine;
 }
 
@@ -725,7 +777,8 @@ static int import(const char *szTableName, const char *szImportFileName,
         LOG("Error: out of memory!.");
         return BWLIST_ERROR;
     }
-    sqlite3_snprintf(nByte+20, SqlString, "INSERT INTO %s VALUES(?", szTableName);
+    sqlite3_snprintf(nByte+20, SqlString, "INSERT INTO %s VALUES(?", 
+            szTableName);
     j = strlen30(SqlString);
 
     for(i = 1; i < nCol; i++)
@@ -851,6 +904,7 @@ static int import(const char *szTableName, const char *szImportFileName,
                 }
                 z[k] = 0;
             }
+            import_column_hook(i, azCol[i]);
             sqlite3_bind_text(pStmt, i+1, azCol[i], -1, SQLITE_STATIC);
         }
 
@@ -1092,7 +1146,8 @@ static int query(const char *szTableName, const char *szPlateNumber,
                 }
                 else if (strcmp(szTemp, "SuspicionType") == 0)
                 {
-                    iTmpSuspicionType = sqlite3_column_int(stmt_select, currField);
+                    iTmpSuspicionType = sqlite3_column_int(stmt_select, 
+                            currField);
                 }
             }
 
@@ -1121,7 +1176,7 @@ static int query(const char *szTableName, const char *szPlateNumber,
 static int insert_record(const char *szTableName, PLATE_RECORD_T *pPlateRecord)
 {
     char *sql_insert = sqlite3_mprintf("INSERT INTO %q VALUES(%Q,%d,%d);", 
-            szTableName, pPlateRecord->szPlateNumber, pPlateRecord->ePlateColor, 
+            szTableName, pPlateRecord->szPlateNumber, pPlateRecord->ePlateColor,
             pPlateRecord->eSuspicionType);
 
     int ret = exec_sql_not_select(sql_insert);
@@ -1147,7 +1202,7 @@ static int modify_record_by_plate_number(const char *TableName,
         SUSPICION_TYPE_E eSuspicionType)
 {
     char *sql_modify = sqlite3_mprintf(
-            "UPDATE %q set PlateType=%d,SuspicionType=%d where PlateNumber=%Q;", 
+            "UPDATE %q set PlateType=%d,SuspicionType=%d where PlateNumber=%Q;",
             TableName, ePlateColor, eSuspicionType, PlateNumber);
 
     int ret = exec_sql_not_select(sql_modify);
@@ -1215,10 +1270,14 @@ void *query_thread(void *pArg)
         else if (ret == 1)
         {
             printf("Find Int\n");
-            strncpy(jpgFile, pPlateMap->jpgFile, MAX_FILE_NAME);
+            strncpy(jpgFile, pPlateMap->jpgFile, MAX_FILE_NAME); 
+            /*
+             *stor_pic_tag_bw(jpgFile, &PlateRecord);
+             *APP_preview_refresh_suspicioninfo(PlateRecord.szPlateNumber,
+             *        PlateRecord.eSuspicionType);
+             */
             if (s_pf_handle_inspected != NULL)
             { 
-                //stor_pic_tag_bw(jpgFile);
                 s_pf_handle_inspected(&PlateRecord, jpgFile);
             }
         }

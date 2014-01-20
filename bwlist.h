@@ -33,7 +33,6 @@ typedef enum {
  * @brief:  嫌疑车辆来源
  */
 typedef enum {
-    ENOT_BLIST_DATA = 0,        ///< 非黑名单数据
     ETEMP_INSPECT_DATA,         ///< 临时布控数据
     EVEHICLE_ADMIN_OFFICE_DATA, ///< 车管所数据
     EIILEGAL_TRAFFFICE_DATA,    ///< 交通违法数据
@@ -46,7 +45,8 @@ typedef enum {
  * @brief:  嫌疑类别
  */
 typedef enum {
-    EDECK_VEHICLE = 0,          ///< 套牌车辆
+    ENO_SUSPICION_TYPE = 0,     ///< 非嫌疑车辆就
+    EDECK_VEHICLE,              ///< 套牌车辆
     EOFFENCE_NO_HANDLE,         ///< 违法未处理
     ESTEAL_OR_ROB_VEHICLE,      ///< 盗抢车辆
     ENOT_YEARLY_CHECK_VEHICLE,  ///< 超期未年检

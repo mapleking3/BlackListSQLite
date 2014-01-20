@@ -10,8 +10,7 @@ LD			:= $(PREFIX)ld
 CFLAGS		+= -Wall -W -O2 -g
 
 INC_FLAG	+= -I.
-INC_FLAGS	+= -I../../include
-LD_FLAGS	+= -L../../libs
+LD_FLAGS	+= -L../urmv/libs
 LD_FLAGS	+= -lrt -lsqlite3 -ldl -lpthread
 
 CSRCS	:= bwlist.c

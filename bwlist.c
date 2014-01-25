@@ -86,6 +86,7 @@ static int delete_records_by_plate_type(const char *szTableName,
         PLATE_COLOR_E ePlateColor);
 static void *query_thread(void *);
 
+#if 0
 /** 
  * @fn:     static char *plate_conv(char *inPlate)
  * @brief:  filter chars link '-' ' ' in plate
@@ -192,6 +193,7 @@ static int gbk_2_utf8(const char *input,size_t ilen,char *output,size_t olen)
     iconv_close(cd);  
     return iRet;  
 }  
+#endif
 
 void db_change_hook(void *pArg, int actionMode, const char *dbName, 
         const char *tableName, long long affectRow)
@@ -1257,24 +1259,8 @@ void *query_thread(void *pArg)
         cnt++;
         int ret = 0;
 
-        char utf8_plate[MAX_PLATE_NUMBER] = {0};
-
-        if (is_gbk_code(pPlateMap->plate))
-        {
-            if (BWLIST_OK != gbk_2_utf8(pPlateMap->plate,
-                        strlen(pPlateMap->plate), 
-                        utf8_plate, MAX_PLATE_NUMBER))
-            {
-                continue;
-            }
-        }
-        else
-        {
-            memcpy(utf8_plate, pPlateMap->plate, strlen(pPlateMap->plate)+1);
-        }
-
-        STATICS_START(utf8_plate);
-        ret = query(szBlackListTable, utf8_plate, &PlateRecord);
+        STATICS_START(pPlateMap->plate);
+        ret = query(szBlackListTable, pPlateMap->plate, &PlateRecord);
         STATICS_STOP();
 
         if (ret < 0)
@@ -1285,8 +1271,8 @@ void *query_thread(void *pArg)
         {
         }
         else if (ret == 1)
-        {
-            printf("Find Int\n");
+        { 
+            printf("------BLIST:%s %s-----\n", PlateRecord.szPlateNumber, jpgFile);
             strncpy(jpgFile, pPlateMap->jpgFile, MAX_FILE_NAME); 
             memcpy(PlateRecord.szPlateNumber, pPlateMap->plate,
                     strlen(pPlateMap->plate)+1);

@@ -1123,13 +1123,14 @@ static int query(const char *szTableName, const char *szPlateNumber,
 
     if (SQLITE_DONE == ret)
     {
-        LOG("%s is not in BlackList.\n", szPlateNumber);
+        //LOG("%s is not in BlackList.\n", szPlateNumber);
         sqlite3_finalize(stmt_select);
         stmt_select = NULL;
         return 0;
     }
     else if (SQLITE_ROW == ret)
     {
+        fprintf(stderr, "\n******************BLIST PLATE:<%s>\n\n", szPlateNumber);
         if (NULL != pPlateRecord)
         {
             int iTmpPlateColor      = 0;
@@ -1272,7 +1273,6 @@ void *query_thread(void *pArg)
         }
         else if (ret == 1)
         { 
-            printf("------BLIST:%s %s-----\n", PlateRecord.szPlateNumber, jpgFile);
             strncpy(jpgFile, pPlateMap->jpgFile, MAX_FILE_NAME); 
             memcpy(PlateRecord.szPlateNumber, pPlateMap->plate,
                     strlen(pPlateMap->plate)+1);

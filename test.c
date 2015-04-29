@@ -70,18 +70,26 @@ int main(void)
     }
 #endif
 
-#if 0
-    //char PlateAtHead[] = "皖A11111";
-    char PlateAtMid[] = "皖A1APS3";
-    //char PlateAtTail[] = "皖A1LFLR";
+#if 1
+    char PlateAtHead[]  = "皖AAAAAA";
+    char PlateAtMid[]   = "皖AAKZ26";
+    char PlateAtTail[]  = "皖AAVPV1";
+    char PlateNoIn[]    = "皖CCCCCC";
     int cnt = 0;
 
     while (bRun == 1 && cnt++ < 100000 )
     {
-        STATICS_START("QUERY");
-        bl_query(PlateAtMid);
+        blist_query(PlateAtHead);
         usleep(50);
-        STATICS_STOP();
+        
+        blist_query(PlateAtMid);
+        usleep(50);
+
+        blist_query(PlateAtTail);
+        usleep(50);
+
+        blist_query(PlateNoIn);
+        usleep(50);
     }
     fprintf(stderr, "Query Over!!!!!!!!!!!!!!!!!!!!!!!!!\n");
     bRun = 0;
@@ -137,7 +145,7 @@ int main(void)
         STATICS_STOP();
     }
 #endif
-#if 1
+#if 0
     STATICS_START("EXPORT");
     bl_export("./export.txt", ";");
     STATICS_STOP();

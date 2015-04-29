@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <string.h>
+#include <sys/time.h>
 #include "plate_bw_list.h"
 
 #define BACKUP_PAGECOUNT 10
@@ -23,6 +24,22 @@
         do {printf("%s in %s Line[%d]:"format"\n",                   \
                 __FUNCTION__, __FILE__, __LINE__, ##__VA_ARGS__);   \
         } while(0)
+#define STATICS_START(name)                             \
+        {                                               \
+        struct timeval start;                           \
+        struct timeval end;                             \
+        const char *statics_name = name;                \
+        gettimeofday(&start, NULL);                     \
+        {
+#define STATICS_STOP()                                  \
+        }                                               \
+        gettimeofday(&end, NULL);                       \
+        printf("%s : ms[ %ld ] or  us[ %ld ]\n", statics_name,  \
+               (end.tv_sec  - start.tv_sec)  * 1000 +                   \
+               (end.tv_usec - start.tv_usec) / 1000,                    \
+                (end.tv_sec - start.tv_sec) * 1000 * 1000 +             \
+                (end.tv_usec - start.tv_usec));                         \
+        }
 
 extern int bRun;
 /*local static variables */
@@ -302,12 +319,12 @@ int wl_export(const char *szExportFileName, const char *szRecordSeparator)
 }
 
 #if 0
-int bl_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
+int blist_query(const char *szPlateNumber, PLATE_RECORD_T *pPlateRecord)
 {
     return query(szBlackListTable, szPlateNumber, pPlateRecord); 
 }
 #else
-int bl_query(const char *szPlateNumber)
+int blist_query(const char *szPlateNumber)
 {
     plate_buffer_put(szPlateNumber);
     return 0;
@@ -952,7 +969,10 @@ void *query_thread(void *pArg)
             continue;
         }
         cnt++;
-        int ret = query(szBlackListTable, PlateNumber, &PlateRecord);
+        int ret = 0; 
+        STATICS_START(PlateNumber);
+        ret = query(szBlackListTable, PlateNumber, &PlateRecord);
+        STATICS_STOP();
 
         if (ret < 0)
         {
